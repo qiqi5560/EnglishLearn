@@ -1,0 +1,20 @@
+# =====后端 backend-spring=====
+backend-spring/target/
+backend-spring/.idea/
+backend-spring/*.iml
+backend-spring/data/
+backend-spring/*.log
+
+# =====前端 frontend=====
+frontend/node_modules/
+frontend/dist/
+frontend/.idea/
+frontend/.vite/
+frontend/.env.local
+
+# =====全局忽略=====
+.idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
