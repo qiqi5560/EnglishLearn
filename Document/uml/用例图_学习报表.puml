@@ -1,0 +1,20 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #F1F8E9
+  BorderColor #689F38
+  ArrowColor #333333
+}
+skinparam rectangle {
+  BackgroundColor #E3F2FD
+  BorderColor #1565C0
+}
+actor "学习者" as Learner
+rectangle "英语口语训练系统" {
+  usecase "UC-09 学习报表查看" as UC9
+}
+Learner --> UC9
+
+@enduml

@@ -1,0 +1,24 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #F1F8E9
+  BorderColor #689F38
+  ArrowColor #333333
+}
+skinparam rectangle {
+  BackgroundColor #E3F2FD
+  BorderColor #1565C0
+}
+actor "学习者" as Learner
+actor "AI 教练" as AICoach
+rectangle "英语口语训练系统" {
+  usecase "UC-02 入学水平测试" as UC2
+  usecase "UC-03 生成个性化学习方案" as UC3
+}
+Learner --> UC2
+AICoach --> UC3
+UC3 ..> UC2 : <<include>>
+
+@enduml

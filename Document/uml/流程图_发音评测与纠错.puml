@@ -1,0 +1,28 @@
+@startuml
+skinparam activityBackgroundColor #FFF8E1
+skinparam activityBorderColor #E65100
+skinparam activityDiamondBackgroundColor #FFFDE7
+skinparam activityDiamondBorderColor #F9A825
+
+|学习者|
+start
+:开始跟读或自由对话;
+repeat
+  |系统|
+  :语音流实时采集;
+  :ASR 识别文本并与音素对齐;
+  |AI 教练|
+  :四维评分（发音/流利度/反应/自然度）;
+  if (存在发音偏误?) then (是)
+    :问题音素标红并给出改进建议;
+    :提供标准发音对照试听;
+  else (否)
+  endif
+  |学习者|
+  :进入下一句/下一话题;
+repeat while (练习结束?) is (未结束) not (已结束)
+|AI 教练|
+:汇总生成评测报告;
+stop
+
+@enduml
