@@ -1,0 +1,23 @@
+// ============================================================
+// Element Plus 主题覆盖（CSS 变量方式）
+// ============================================================
+:root {
+  --el-color-primary: #3b6fe0;
+  --el-color-primary-light-3: #6c93e8;
+  --el-color-primary-light-5: #98b3ee;
+  --el-color-primary-light-7: #c3d3f5;
+  --el-color-primary-light-8: #d6e1f8;
+  --el-color-primary-light-9: #ecf1fc;
+  --el-color-primary-dark-2: #2f5bb3;
+
+  --el-color-success: #22a06b;
+  --el-color-warning: #e8a23d;
+  --el-color-danger: #e5484d;
+
+  --el-border-radius-base: 10px;
+  --el-font-family: var(--font-ui);
+  --el-text-color-primary: var(--ink);
+  --el-text-color-regular: #4a5268;
+  --el-text-color-secondary: var(--muted);
+  --el-border-color: var(--border);
+}
