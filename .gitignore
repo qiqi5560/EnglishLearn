@@ -4,9 +4,16 @@
 *.sqlite3
 # 前端依赖
 node_modules/
+# 构建产物
+target/
+dist/
+build/
 # IDE缓存
 .idea/
 .vscode/
+*.iml
+# 本地数据目录
+data/
 # 日志
 *.log
 # 环境变量
