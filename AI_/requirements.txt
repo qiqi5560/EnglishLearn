@@ -1,0 +1,17 @@
+# ============================================================
+# AI 端 Python 依赖清单（组长整合 / 其他成员复现环境用）
+# 安装命令:  pip install -r requirements.txt
+# 说明:
+#   - faster-whisper 替代原组长方案的 openai-whisper
+#     (无NVIDIA独显的电脑在 CPU 上更快, 且无需安装庞大的 PyTorch)
+#   - edge-tts / ollama / sounddevice 为其余三块能力
+#   - onnxruntime 用于音素级发音评测（CPU 友好，体积小）
+#   - cmudict 为音素评测提供英文发音词典（字素 -> 音素）
+# ============================================================
+
+faster-whisper>=1.2.1
+edge-tts>=7.2.8
+ollama>=0.6.2
+sounddevice>=0.5.6
+onnxruntime>=1.16.0
+cmudict>=1.0.13
