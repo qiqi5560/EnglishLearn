@@ -107,7 +107,8 @@ public class PlanService {
         return new LevelResult(level, summary);
     }
 
-    @Transactional
+    // 注意：不包事务。evalSpeaking 会调用 LLM（Ollama 弱网时可能耗时十几秒），
+    // 若包在事务里会长时间占用 SQLite 写锁，易触发 SQLITE_BUSY。
     public Map<String, Object> submitEntranceTest(User user, List<PlanDtos.EntranceAnswer> answers, String targetGoal) {
         String goal = (targetGoal == null || targetGoal.isBlank()) ? "兴趣" : targetGoal;
         if (!GOAL_LIST.contains(goal)) {

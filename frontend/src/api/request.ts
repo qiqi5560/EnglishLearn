@@ -48,14 +48,26 @@ instance.interceptors.response.use(
   },
   (err) => {
     const resp = err?.response
-    const msg = resp?.data?.message || (err?.code === 'ECONNABORTED' ? '请求超时，请确认后端服务已启动' : '网络异常，请稍后重试')
+
+    // 401 登录过期：清理登录态并跳转登录页（逻辑保持不变）
     if (resp?.status === 401) {
       handleUnauthorized()
-    } else if (resp?.status !== 422) {
-      ElMessage.error(msg)
-    } else if (msg && msg !== '请求失败') {
-      ElMessage.error(msg)
+      return Promise.reject(err)
     }
+
+    // 422 参数校验失败：FastAPI 返回 { detail: [{ loc: [], msg: 'xxx' }] }，提取第一条 msg 提示
+    if (resp?.status === 422) {
+      const detail = (resp?.data as { detail?: Array<{ msg?: string }> })?.detail
+      const firstMsg = Array.isArray(detail) && detail.length > 0 ? detail[0]?.msg ?? '' : ''
+      if (firstMsg) {
+        ElMessage.error(firstMsg)
+      }
+      return Promise.reject(err)
+    }
+
+    // 超时 / 网络异常 / 其他业务错误
+    const msg = resp?.data?.message || (err?.code === 'ECONNABORTED' ? '请求超时，请确认后端服务已启动' : '网络异常，请稍后重试')
+    ElMessage.error(msg)
     return Promise.reject(err)
   },
 )
