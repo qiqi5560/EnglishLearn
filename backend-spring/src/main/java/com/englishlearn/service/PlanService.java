@@ -194,6 +194,30 @@ public class PlanService {
         return taskRepository.save(task);
     }
 
+    @Transactional
+    public DailyTask addSceneToPlan(User user, Integer sceneId) {
+        LearningPlan plan = getActivePlan(user);
+        if (plan == null) throw new ApiException(404, "请先完成入学测评或生成学习方案");
+        Scene scene = sceneRepository.findById(sceneId).filter(s -> Integer.valueOf(1).equals(s.status)).orElse(null);
+        if (scene == null) throw new ApiException(404, "场景不存在或已下架");
+        LocalDate today = LocalDate.now();
+        DailyTask existing = taskRepository.findByUserIdAndTaskDateAndSceneId(user.userId, today, sceneId).orElse(null);
+        if (existing != null) throw new ApiException(409, "该场景已加入今日计划");
+        if (taskRepository.countByUserIdAndTaskDateAndTaskType(user.userId, today, "场景对话") >= 10) {
+            throw new ApiException(422, "今日场景任务已达上限");
+        }
+        DailyTask task = new DailyTask();
+        task.userId = user.userId;
+        task.planId = plan.planId;
+        task.taskType = "场景对话";
+        task.title = scene.sceneName;
+        task.durationMin = 10;
+        task.sceneId = sceneId;
+        task.done = 0;
+        task.taskDate = today;
+        return taskRepository.save(task);
+    }
+
     private LearningPlan upsertPlan(User user, String level, String targetGoal) {
         LearningPlan plan = planRepository.findByUserId(user.userId).orElse(null);
         String content = JsonUtil.toJson(Map.of(

@@ -80,4 +80,10 @@ public class PlanController {
         DailyTask task = planService.toggleTask(taskId, user.userId, done);
         return ApiResponse.ok(Dtos.taskToDict(task), "任务状态已更新");
     }
+
+    @PostMapping("/scenes/{sceneId}/add")
+    public ApiResponse addSceneToPlan(@PathVariable Integer sceneId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(Dtos.taskToDict(planService.addSceneToPlan(user, sceneId)), "已加入今日计划");
+    }
 }

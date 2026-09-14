@@ -75,6 +75,18 @@ export const usePlanStore = defineStore('plan', () => {
     }
   }
 
+  function isSceneInTodayPlan(sceneId: number) {
+    return dailyTasks.value.some((task) => task.sceneId === sceneId)
+  }
+
+  async function addSceneToPlan(sceneId: number) {
+    const task = await planApi.addSceneToPlan(sceneId)
+    const index = dailyTasks.value.findIndex((item) => item.taskId === task.taskId)
+    if (index >= 0) dailyTasks.value[index] = task
+    else dailyTasks.value.push(task)
+    return task
+  }
+
   return {
     level,
     targetGoal,
@@ -88,5 +100,7 @@ export const usePlanStore = defineStore('plan', () => {
     submitEntranceTest,
     regenerate,
     toggleTask,
+    isSceneInTodayPlan,
+    addSceneToPlan,
   }
 })

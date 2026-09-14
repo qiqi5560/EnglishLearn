@@ -35,3 +35,7 @@ export function getTodayTasks() {
 export function toggleTask(taskId: number, done: boolean) {
   return http.put<DailyTaskDto>(`/plans/tasks/${taskId}`, { done })
 }
+
+export function addSceneToPlan(sceneId: number) {
+  return http.post<DailyTaskDto>(`/plans/scenes/${sceneId}/add`)
+}

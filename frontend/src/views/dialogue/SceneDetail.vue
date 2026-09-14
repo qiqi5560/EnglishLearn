@@ -26,9 +26,14 @@
           </div>
         </el-card>
 
-        <el-button type="primary" class="start-btn" :loading="starting" @click="onStart">
+        <div class="detail-actions">
+          <el-button class="plan-btn" :type="addedToPlan ? 'success' : 'default'" :loading="addingToPlan" :disabled="addedToPlan" @click="onAddToPlan">
+            <el-icon><Calendar /></el-icon>&nbsp;{{ addedToPlan ? '已加入今日计划' : '加入每日计划' }}
+          </el-button>
+          <el-button type="primary" class="start-btn" :loading="starting" @click="onStart">
           <el-icon><Microphone /></el-icon>&nbsp;开始对话练习
-        </el-button>
+          </el-button>
+        </div>
       </template>
 
       <el-empty v-else-if="!loading" description="场景不存在或已下架">
@@ -45,17 +50,35 @@ import AppHeader from '@/components/base/AppHeader.vue'
 import LevelTag from '@/components/business/LevelTag.vue'
 import { sceneDetail } from '@/api/modules/scene'
 import { useSessionStore } from '@/stores/session'
+import { usePlanStore } from '@/stores/plan'
+import { ElMessage } from 'element-plus'
 import type { SceneDto } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
 const sessionStore = useSessionStore()
+const planStore = usePlanStore()
 
 const scene = ref<SceneDto | null>(null)
 const loading = ref(false)
 const starting = ref(false)
+const addingToPlan = ref(false)
 
 const sceneId = Number(route.params.id)
+const addedToPlan = ref(false)
+
+async function onAddToPlan() {
+  if (!scene.value || addingToPlan.value || addedToPlan.value) return
+  addingToPlan.value = true
+  try {
+    await planStore.addSceneToPlan(scene.value.id)
+    addedToPlan.value = true
+    ElMessage.success('已加入今日计划')
+  } catch (error: any) {
+    if (error?.response?.status === 409) addedToPlan.value = true
+    else if (error?.response?.status === 422) ElMessage.warning('今日场景任务已达上限')
+  } finally { addingToPlan.value = false }
+}
 
 async function onStart() {
   if (!scene.value || starting.value) return
@@ -75,6 +98,8 @@ onMounted(async () => {
   loading.value = true
   try {
     scene.value = await sceneDetail(sceneId)
+    await planStore.loadTodayTasks().catch(() => null)
+    addedToPlan.value = planStore.isSceneInTodayPlan(sceneId)
   } finally {
     loading.value = false
   }
@@ -115,7 +140,16 @@ onMounted(async () => {
 }
 
 .start-btn {
-  width: 100%;
+  flex: 1;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 12px;
   margin-top: 20px;
+}
+
+.plan-btn {
+  min-width: 180px;
 }
 </style>
