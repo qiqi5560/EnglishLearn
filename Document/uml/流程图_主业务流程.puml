@@ -1,0 +1,37 @@
+@startuml
+skinparam activityBackgroundColor #FFF8E1
+skinparam activityBorderColor #E65100
+skinparam activityDiamondBackgroundColor #FFFDE7
+skinparam activityDiamondBorderColor #F9A825
+
+|学习者|
+start
+:注册/登录（少儿账号需监护人授权）;
+if (是否首次使用系统?) then (是)
+  :参加入学水平测试;
+  |AI 教练|
+  :多维评估并生成初始等级;
+  :生成个性化学习方案;
+else (否)
+endif
+:推送个性化每日练习任务;
+|学习者|
+:选择对话场景;
+:AI 数字人开场引导;
+repeat
+  :自由开口对话;
+  |AI 教练|
+  :实时理解语义并流式回应;
+  :实时评测（发音/流利度/反应速度/自然度）;
+  if (存在语法或发音问题?) then (是)
+    :即时纠错并给出地道表达建议;
+  else (否)
+  endif
+repeat while (达到设定练习时长?) is (未达到) not (已到达)
+:生成练习小结与综合评分;
+|系统|
+:记录学习数据，动态调整学习方案;
+:更新可视化学习报表;
+stop
+
+@enduml

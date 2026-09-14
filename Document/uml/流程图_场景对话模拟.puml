@@ -1,0 +1,33 @@
+@startuml
+skinparam activityBackgroundColor #FFF8E1
+skinparam activityBorderColor #E65100
+skinparam activityDiamondBackgroundColor #FFFDE7
+skinparam activityDiamondBorderColor #F9A825
+
+|学习者|
+start
+:选择对话场景（生活/工作/学习/出行）;
+if (已完成水平测评?) then (否)
+  |AI 教练|
+  :引导完成入学水平测试;
+else (是)
+endif
+|AI 教练|
+:AI 数字人开场引导;
+repeat
+  |学习者|
+  :自由开口对话;
+  |AI 教练|
+  :实时理解并流式回应;
+  if (存在语法/表达问题?) then (是)
+    :即时纠错并给出地道表达;
+  else (否)
+  endif
+repeat while (达到练习时长?) is (未达到) not (已到达)
+|AI 教练|
+:生成练习小结与综合评分;
+|系统|
+:更新学习记录;
+stop
+
+@enduml

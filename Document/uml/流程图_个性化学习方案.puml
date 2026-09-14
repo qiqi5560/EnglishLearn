@@ -1,0 +1,31 @@
+@startuml
+skinparam activityBackgroundColor #FFF8E1
+skinparam activityBorderColor #E65100
+skinparam activityDiamondBackgroundColor #FFFDE7
+skinparam activityDiamondBorderColor #F9A825
+
+|学习者|
+start
+:开始入学测试;
+:参与引导式人机对话问答;
+|系统|
+:采集语音并 ASR 转写;
+|AI 教练|
+:评估发音/语法/流利度;
+:生成初始英语等级;
+:结合学习目标与年龄标签;
+:生成个性化学习方案;
+repeat
+  |系统|
+  :推送每日练习任务;
+  |学习者|
+  :执行任务并提交反馈;
+  |系统|
+  :记录完成情况与效果数据;
+  |AI 教练|
+  :动态调整学习方案;
+repeat while (是否达成阶段学习目标?) is (未达成) not (已达成)
+:更新方案状态;
+stop
+
+@enduml

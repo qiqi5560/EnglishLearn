@@ -1,0 +1,82 @@
+@startuml
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam linetype ortho
+hide circle
+
+class "users 用户表" as users {
+  + user_id <<PK>>
+  phone <<唯一>>
+  nickname
+  age_group
+  user_role
+  guardian_id <<FK>>
+}
+class "scene 对话场景表" as scene {
+  + scene_id <<PK>>
+  scene_name
+  scene_category
+  level_scope
+  role_setting
+}
+class "conversation_session 对话会话表" as cs {
+  + session_id <<PK>>
+  user_id <<FK>>
+  scene_id <<FK>>
+  mode
+  duration_sec
+}
+class "conversation_message 对话消息表" as msg {
+  + message_id <<PK>>
+  session_id <<FK>>
+  speaker
+  content_en
+  content_zh
+  audio_url
+}
+class "assessment_record 评测记录表" as ar {
+  + assess_id <<PK>>
+  session_id <<FK>>
+  message_id <<FK>>
+  pron_score
+  fluency_score
+  reaction_score
+  natural_score
+}
+class "learning_plan 学习方案表" as plan {
+  + plan_id <<PK>>
+  user_id <<FK>>
+  target_goal
+  level_start
+  level_current
+}
+class "learning_resource 学习资源表" as res {
+  + resource_id <<PK>>
+  title
+  res_type
+  level
+  media_url
+}
+class "study_record 学习记录表" as sr {
+  + record_id <<PK>>
+  user_id <<FK>>
+  session_id <<FK>>
+  action_type
+  score
+}
+
+users "1" o-- "0..*" plan : 制定
+users "1" o-- "0..*" cs : 发起
+users "1" o-- "0..*" sr : 产生
+scene "1" o-- "0..*" cs : 关联
+cs "1" o-- "1..*" msg : 包含
+cs "1" o-- "0..*" ar : 生成
+msg "1" o-- "0..*" ar : 按句评测
+res "1" o-- "0..*" sr : 被学习
+note right of users
+  少儿账号通过 guardian_id
+  绑定监护人账号
+end note
+
+@enduml
