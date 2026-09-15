@@ -139,6 +139,25 @@ public class MockLlmProvider implements LlmProvider {
     }
 
     @Override
+    public LevelJudgement judgeLevel(List<String> answers) {
+        // 离线兜底：只能按作答长度粗略估级
+        if (answers == null || answers.isEmpty()) {
+            return new LevelJudgement("A1", 10, "No answers provided.");
+        }
+        int totalWords = 0;
+        for (String a : answers) {
+            if (a == null || a.isBlank()) continue;
+            for (String w : a.trim().split("\\s+")) {
+                if (!w.isBlank()) totalWords++;
+            }
+        }
+        double avg = totalWords / (double) answers.size();
+        String level = avg < 3 ? "A1" : avg < 7 ? "A2" : avg < 12 ? "B1" : avg < 18 ? "B2" : avg < 26 ? "C1" : "C2";
+        int score = (int) Math.min(95, Math.round(avg * 4) + 10);
+        return new LevelJudgement(level, score, "Judged by answer length only (offline mode).");
+    }
+
+    @Override
     public SummaryResult summarize(List<ConversationMessage> messages, List<EvalResult> evaluations) {
         SummaryResult result = new SummaryResult();
         double pron, fluency, reaction, natural;

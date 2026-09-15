@@ -37,5 +37,5 @@ app:
 llm:
   provider: ollama
   ollama:
-    base-url: http://172.20.6.147:11434
+    base-url: http://127.0.0.1:11434
     model: qwen2.5:7b-instruct

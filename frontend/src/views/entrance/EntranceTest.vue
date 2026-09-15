@@ -22,12 +22,17 @@
       <el-card shadow="never" class="question-card">
         <div class="question-prompt">
           <p class="text-muted">AI 教练提问（第 {{ step + 1 }}/3 题）</p>
-          <p class="question-text">{{ questions[step] }}</p>
+          <div class="question-line">
+            <p class="question-text">{{ questions[step] }}</p>
+            <el-button link type="primary" title="朗读题目" @click="speak(questions[step])">
+              <el-icon :size="18"><Headset /></el-icon>
+            </el-button>
+          </div>
         </div>
 
         <!-- 看图描述：随机展示静态题库中的图片 -->
         <div v-if="step === 1 && imageItem" class="image-area">
-          <el-image :src="imageItem.image" fit="cover" class="question-image">
+          <el-image :src="imageItem.image" fit="contain" class="question-image">
             <template #error>
               <div class="image-error">
                 <el-icon><Picture /></el-icon>
@@ -74,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AppHeader from '@/components/base/AppHeader.vue'
@@ -91,7 +96,7 @@ const submitting = ref(false)
 const targetGoal = ref('兴趣')
 const goals = ['考试', '商务', '出国', '兴趣']
 
-const { isListening, recognitionSupported, start, stop } = useSpeech()
+const { isListening, recognitionSupported, start, stop, speak } = useSpeech()
 
 // 随机抽取一张「看图描述」图片与对应问题
 const imageItem = ref<EntranceImageItem | null>(null)
@@ -106,6 +111,10 @@ const questions = computed(() => [
 ])
 
 const answers = ref<string[]>(['', '', ''])
+
+// 切换题目时自动朗读，也可点小喇叭手动重听
+watch(step, () => speak(questions.value[step.value]))
+onMounted(() => speak(questions.value[0]))
 
 function currentBlank() {
   for (let i = 0; i < answers.value.length; i += 1) {
@@ -177,20 +186,30 @@ async function onSubmit() {
     font-size: 16px;
     font-weight: 600;
   }
+
+  .question-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 }
 
 .image-area {
   margin: 12px 0;
 
+  // 高度随屏幕伸缩，小屏不撑爆、大屏不过矮
+  $img-height: clamp(180px, 32vh, 340px);
+
   .question-image {
     width: 100%;
-    height: 200px;
+    height: $img-height;
     border-radius: var(--radius-md);
+    background: var(--bg-soft, #f5f7fb);
   }
 
   .image-error {
     width: 100%;
-    height: 200px;
+    height: $img-height;
     display: flex;
     flex-direction: column;
     align-items: center;

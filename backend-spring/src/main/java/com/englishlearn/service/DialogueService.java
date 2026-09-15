@@ -26,12 +26,23 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 对话会话服务（F002/F003）：会话生命周期与消息收发。
  */
 @Service
 public class DialogueService {
+
+    private static final Logger log = LoggerFactory.getLogger(DialogueService.class);
 
     private static final int MAX_CONTEXT = 6;
 
@@ -40,6 +51,16 @@ public class DialogueService {
     private final AssessmentRecordRepository assessmentRepository;
     private final StudyRecordRepository studyRecordRepository;
     private final LlmProvider llmProvider;
+
+    /** 模型调用线程池：口译评分在后台异步执行，不阻塞 AI 回复返回 */
+    private final ExecutorService llmExecutor = Executors.newFixedThreadPool(4, r -> {
+        Thread t = new Thread(r, "llm-caller");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 尚未完成的评分任务：结束会话前需等待其落库，避免小结漏算最后一句 */
+    private final ConcurrentMap<Integer, Set<CompletableFuture<EvalResult>>> pendingEvals = new ConcurrentHashMap<>();
 
     public DialogueService(ConversationSessionRepository sessionRepository,
                            ConversationMessageRepository messageRepository,
@@ -95,6 +116,8 @@ public class DialogueService {
 
         String role = roleOf(scene);
         List<ConversationMessage> history = recentMessages(session.sessionId);
+
+        // 生成回复在主链路上；口语评分异步进行，不占用用户等待时间
         Reply reply = llmProvider.reply(
                 scene != null ? scene.sceneName : "自由对话",
                 scene != null ? scene.sceneDesc : "",
@@ -110,26 +133,74 @@ public class DialogueService {
         aiMsg.msgTime = LocalDateTime.now();
         aiMsg = messageRepository.save(aiMsg);
 
-        EvalResult eval = llmProvider.evaluate(content);
+        startAsyncEvaluation(session.sessionId, userMsg.messageId, content);
+
+        SendResult sendResult = new SendResult(userMsg, aiMsg, null);
+        return sendResult;
+    }
+
+    /**
+     * 后台执行口语评分：结果写入 assessment 表，前端通过
+     * GET /dialogues/sessions/{id}/messages/{mid}/assessment 轮询获取。
+     */
+    private void startAsyncEvaluation(Integer sessionId, Integer messageId, String content) {
+        CompletableFuture<EvalResult> future = CompletableFuture.supplyAsync(
+                () -> llmProvider.evaluate(content), llmExecutor);
+        pendingEvals.computeIfAbsent(sessionId, key -> ConcurrentHashMap.newKeySet()).add(future);
+        future.whenComplete((eval, error) -> {
+            if (eval != null) {
+                try {
+                    saveAssessment(sessionId, messageId, eval);
+                } catch (Exception e) {
+                    log.warn("异步口语评分入库失败: {}", e.getMessage());
+                }
+            } else if (error != null) {
+                log.warn("异步口语评分失败: {}", error.getMessage());
+            }
+            Set<CompletableFuture<EvalResult>> set = pendingEvals.get(sessionId);
+            if (set != null) {
+                set.remove(future);
+                if (set.isEmpty()) pendingEvals.remove(sessionId, set);
+            }
+        });
+    }
+
+    private void saveAssessment(Integer sessionId, Integer messageId, EvalResult eval) {
         AssessmentRecord record = new AssessmentRecord();
-        record.sessionId = session.sessionId;
-        record.messageId = userMsg.messageId;
+        record.sessionId = sessionId;
+        record.messageId = messageId;
         record.pronScore = eval.pron;
         record.fluencyScore = eval.fluency;
         record.reactionScore = eval.reaction;
         record.naturalScore = eval.natural;
         record.grammarFeedback = eval.grammarFeedback;
-        record.phonemeIssues = eval.phonemeIssues.isEmpty() ? null : JsonUtil.toJson(eval.phonemeIssues);
+        record.phonemeIssues = eval.phonemeIssues == null || eval.phonemeIssues.isEmpty()
+                ? null : JsonUtil.toJson(eval.phonemeIssues);
         record.betterExpression = eval.betterExpression;
         record.assessTime = LocalDateTime.now();
         assessmentRepository.save(record);
+    }
 
-        Map<String, Object> liveScores = new LinkedHashMap<>();
-        liveScores.put("pron", eval.pron);
-        liveScores.put("fluency", eval.fluency);
-        liveScores.put("reaction", eval.reaction);
-        liveScores.put("natural", eval.natural);
-        return new SendResult(userMsg, aiMsg, liveScores);
+    /** 某条用户消息的评分是否已产出 */
+    public AssessmentRecord latestAssessment(Integer sessionId, Integer messageId) {
+        return assessmentRepository.findFirstBySessionIdAndMessageIdOrderByAssessIdDesc(sessionId, messageId);
+    }
+
+    /**
+     * 等待本会话尚未完成的评分任务（最长 60 秒），确保结束会话时小结包含最后一句。
+     * 注意：必须在事务外调用，避免长时间占用 SQLite 写锁。
+     */
+    public void awaitPendingEvaluations(Integer sessionId) {
+        Set<CompletableFuture<EvalResult>> pending = pendingEvals.remove(sessionId);
+        if (pending == null || pending.isEmpty()) {
+            return;
+        }
+        try {
+            CompletableFuture.allOf(pending.toArray(new CompletableFuture<?>[0]))
+                    .get(60, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+            // 超时则以已入库的评分继续，不阻塞会话小结
+        }
     }
 
     @Transactional

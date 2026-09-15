@@ -18,5 +18,8 @@ public interface LlmProvider {
 
     EvalResult evaluate(String userInput);
 
+    /** 入学测评：综合所有作答内容判定 CEFR 等级（按内容质量打分，而非词数） */
+    LevelJudgement judgeLevel(List<String> answers);
+
     SummaryResult summarize(List<ConversationMessage> messages, List<EvalResult> evaluations);
 }

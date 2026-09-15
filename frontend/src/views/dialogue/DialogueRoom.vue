@@ -2,6 +2,10 @@
   <div class="dialogue-room">
     <AppHeader :title="sessionStore.sceneName || '对话练习'">
       <template #right>
+        <el-button link :type="autoSpeak ? 'primary' : 'info'" title="AI 回复后自动朗读" @click="toggleAutoSpeak">
+          <el-icon :size="16"><Headset /></el-icon>
+          {{ isSpeaking ? '朗读中' : autoSpeak ? '朗读开' : '朗读关' }}
+        </el-button>
         <el-button link type="danger" :disabled="sessionStore.status === 'finished'" @click="onEnd">结束</el-button>
       </template>
     </AppHeader>
@@ -21,6 +25,9 @@
         :size="52"
         :stroke="5"
       />
+      <el-tag v-if="sessionStore.evaluating" size="small" type="info" effect="plain" class="eval-tag">
+        评分中…
+      </el-tag>
     </div>
 
     <!-- 对话消息流 -->
@@ -88,8 +95,10 @@ const sessionStore = useSessionStore()
 
 const draft = ref('')
 const loading = ref(false)
+const autoSpeak = ref(true)
+const lastPlayedId = ref<number | null>(null)
 const chatPanel = ref<HTMLElement | null>(null)
-const { isListening, recognitionSupported, start, stop, speak } = useSpeech()
+const { isListening, isSpeaking, recognitionSupported, start, stop, speak, stopSpeaking } = useSpeech()
 
 const dimScores = computed(() => [
   { label: '发音', score: sessionStore.liveScores.pron },
@@ -128,6 +137,29 @@ function onPlay(msg: ChatMessageDto) {
   speak(msg.contentEn)
 }
 
+/** AI 回复后自动朗读最新一条，同一条只播一次 */
+function autoPlayLatest() {
+  if (!autoSpeak.value) return
+  const list = sessionStore.messages
+  if (!list.length) return
+  const last = list[list.length - 1]
+  if (last.speaker !== 'ai' || !last.contentEn?.trim()) return
+  if (lastPlayedId.value === last.id) return
+  lastPlayedId.value = last.id
+  speak(last.contentEn)
+}
+
+function toggleAutoSpeak() {
+  autoSpeak.value = !autoSpeak.value
+  if (autoSpeak.value) {
+    lastPlayedId.value = null
+    autoPlayLatest()
+  } else {
+    stopSpeaking()
+  }
+  ElMessage.success(autoSpeak.value ? '已开启自动朗读' : '已关闭自动朗读')
+}
+
 function onMicClick() {
   if (isListening.value) {
     stop()
@@ -163,7 +195,10 @@ function onEnd() {
 
 watch(
   () => sessionStore.messages.length,
-  () => scrollToBottom(),
+  () => {
+    scrollToBottom()
+    autoPlayLatest()
+  },
 )
 
 onMounted(async () => {
@@ -183,6 +218,7 @@ onMounted(async () => {
     }
   }
   scrollToBottom()
+  autoPlayLatest()
 })
 </script>
 
