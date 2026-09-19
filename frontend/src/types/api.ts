@@ -109,7 +109,20 @@ export interface SessionListItem {
 export interface MessageReplyResult {
   userMessage: ChatMessageDto
   aiMessage: ChatMessageDto
-  liveScores: { pron: number; fluency: number; reaction: number; natural: number }
+  /** 口语评分改为后台异步产出，发送时可能为 null，需用 polling 拉取 */
+  liveScores: { pron: number; fluency: number; reaction: number; natural: number } | null
+}
+
+/** 某条消息的口语评分（异步） */
+export interface MessageAssessmentDto {
+  ready: boolean
+  pron?: number
+  fluency?: number
+  reaction?: number
+  natural?: number
+  grammarFeedback?: string | null
+  phonemeIssues?: Array<{ word: string; phoneme: string; note: string }> | null
+  betterExpression?: string | null
 }
 
 /** assessment_record（SRS 表 5）小结 */

@@ -6,6 +6,7 @@ import com.englishlearn.common.JsonUtil;
 import com.englishlearn.common.TimeUtil;
 import com.englishlearn.dto.DialogueDtos;
 import com.englishlearn.dto.Dtos;
+import com.englishlearn.entity.AssessmentRecord;
 import com.englishlearn.entity.ConversationMessage;
 import com.englishlearn.entity.ConversationSession;
 import com.englishlearn.entity.Scene;
@@ -115,7 +116,29 @@ public class DialogueController {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("userMessage", Dtos.messageToDict(result.userMessage()));
         data.put("aiMessage", Dtos.messageToDict(result.aiMessage()));
+        // 口语评分改为后台异步产出，前端按 userMessage.id 轮询 assessment 接口
         data.put("liveScores", result.liveScores());
+        return ApiResponse.ok(data, "ok");
+    }
+
+    /** 轮询某条用户消息的口语评分（异步完成后返回 ready=true） */
+    @GetMapping("/sessions/{sessionId}/messages/{messageId}/assessment")
+    public ApiResponse messageAssessment(@PathVariable Integer sessionId, @PathVariable Integer messageId) {
+        User user = authFacade.requireUser();
+        ConversationSession session = ownedSession(sessionId, user);
+        AssessmentRecord record = dialogueService.latestAssessment(session.sessionId, messageId);
+        if (record == null) {
+            return ApiResponse.ok(Map.of("ready", false), "评分计算中");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("ready", true);
+        data.put("pron", record.pronScore);
+        data.put("fluency", record.fluencyScore);
+        data.put("reaction", record.reactionScore);
+        data.put("natural", record.naturalScore);
+        data.put("grammarFeedback", record.grammarFeedback);
+        data.put("phonemeIssues", JsonUtil.parseList(record.phonemeIssues));
+        data.put("betterExpression", record.betterExpression);
         return ApiResponse.ok(data, "ok");
     }
 
@@ -123,6 +146,8 @@ public class DialogueController {
     public ApiResponse finishSession(@PathVariable Integer sessionId) {
         User user = authFacade.requireUser();
         ConversationSession session = ownedSession(sessionId, user);
+        // 事务外等待后台评分落库，确保小结包含最后一句的分数
+        dialogueService.awaitPendingEvaluations(session.sessionId);
         return ApiResponse.ok(dialogueService.finishSession(session), "会话已结束，小结已生成");
     }
 

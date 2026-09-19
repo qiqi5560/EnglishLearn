@@ -9,6 +9,7 @@ import com.englishlearn.entity.LearningPlan;
 import com.englishlearn.entity.Scene;
 import com.englishlearn.entity.User;
 import com.englishlearn.llm.EvalResult;
+import com.englishlearn.llm.LevelJudgement;
 import com.englishlearn.llm.LlmProvider;
 import com.englishlearn.repository.DailyTaskRepository;
 import com.englishlearn.repository.LearningPlanRepository;
@@ -86,35 +87,22 @@ public class PlanService {
 
     public record LevelResult(String level, String summary) {}
 
-    public LevelResult judgeLevel(List<PlanDtos.EntranceAnswer> answers) {
-        String level;
-        if (answers == null || answers.isEmpty()) {
-            level = "A1";
-        } else {
-            int totalWords = 0;
-            for (PlanDtos.EntranceAnswer a : answers) {
-                totalWords += wordsCount(a.text() == null ? "" : a.text());
-            }
-            double avg = totalWords / (double) answers.size();
-            if (avg < 3) level = "A1";
-            else if (avg < 7) level = "A2";
-            else if (avg < 12) level = "B1";
-            else if (avg < 18) level = "B2";
-            else if (avg < 26) level = "C1";
-            else level = "C2";
-        }
-        String summary = "基于本次 " + answers.size() + " 个问题的综合表现，初步判断为 " + level + " 水平。";
-        return new LevelResult(level, summary);
-    }
-
-    // 注意：不包事务。evalSpeaking 会调用 LLM（Ollama 弱网时可能耗时十几秒），
+    // 注意：不包事务。判级与口语评价都会调用 LLM（Ollama 本地推理一次约十几秒），
     // 若包在事务里会长时间占用 SQLite 写锁，易触发 SQLITE_BUSY。
     public Map<String, Object> submitEntranceTest(User user, List<PlanDtos.EntranceAnswer> answers, String targetGoal) {
         String goal = (targetGoal == null || targetGoal.isBlank()) ? "兴趣" : targetGoal;
         if (!GOAL_LIST.contains(goal)) {
             throw new ApiException(422, "目标取值应为：" + String.join("/", GOAL_LIST));
         }
-        LevelResult result = judgeLevel(answers);
+        // 等级判定与「看图描述」口语评价并行调用模型，总耗时约等于单次
+        List<String> texts = answers == null ? List.of()
+                : answers.stream().map(a -> a.text() == null ? "" : a.text()).toList();
+        var judgeFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> llmProvider.judgeLevel(texts));
+        var evalFuture = java.util.concurrent.CompletableFuture.supplyAsync(() -> evalSpeaking(answers));
+        LevelJudgement judgement = judgeFuture.join();
+        Map<String, Object> speakingEval = evalFuture.join();
+
+        LevelResult result = toLevelResult(judgement, answers);
         LearningPlan plan = upsertPlan(user, result.level(), goal);
         List<DailyTask> tasks = ensureTodayTasks(user, plan);
         Map<String, Object> data = new LinkedHashMap<>();
@@ -123,13 +111,23 @@ public class PlanService {
         data.put("targetGoal", goal);
         data.put("plan", Dtos.planToDict(plan));
         data.put("tasks", tasks.stream().map(Dtos::taskToDict).toList());
-        data.put("speakingEval", evalSpeaking(answers));
+        data.put("speakingEval", speakingEval);
         return data;
     }
 
+    private LevelResult toLevelResult(LevelJudgement judgement, List<PlanDtos.EntranceAnswer> answers) {
+        int questionCount = answers == null ? 0 : answers.size();
+        String comment = judgement.comment() == null || judgement.comment().isBlank()
+                ? "" : judgement.comment();
+        String summary = "基于本次 " + questionCount + " 题作答内容评分 " + judgement.score()
+                + " 分，判定为 " + judgement.level() + " 水平。"
+                + (comment.isEmpty() ? "" : " " + comment);
+        return new LevelResult(judgement.level(), summary);
+    }
+
     /**
-     * 对「看图描述」作答（id=2）调用大模型做口语评价；其余题目保持词数判定等级。
-     * 大模型只负责最终口语评价，不生成题目与图片。
+     * 对「看图描述」作答（id=2）调用大模型做口语评价。
+     * 大模型只负责口语评价与等级判定，不生成题目与图片。
      */
     private Map<String, Object> evalSpeaking(List<PlanDtos.EntranceAnswer> answers) {
         String text = null;
@@ -291,16 +289,5 @@ public class PlanService {
             tasks = buildTasksForDate(user, plan, today);
         }
         return tasks;
-    }
-
-    private static int wordsCount(String text) {
-        if (text == null || text.isBlank()) {
-            return 0;
-        }
-        int count = 0;
-        for (String w : text.split("\\s+")) {
-            if (!w.isBlank()) count++;
-        }
-        return count;
     }
 }

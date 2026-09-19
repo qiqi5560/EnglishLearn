@@ -23,7 +23,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Ollama Provider：调用 qwen2.5:7b-instruct 完成场景对话（reply）与口语评估（evaluate）。
@@ -40,12 +42,18 @@ public class OllamaLlmProvider implements LlmProvider {
     private final ObjectMapper objectMapper;
     private final MockLlmProvider fallback = new MockLlmProvider();
 
+    /** 熔断：连续失败达阈值后，冷却期内直接回退 mock，避免每条消息都干等连接超时 */
+    private static final int FAILURE_THRESHOLD = 2;
+    private static final long COOLDOWN_MS = 600_000L;
+    private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
+    private volatile long unavailableUntil = 0L;
+
     public OllamaLlmProvider(String baseUrl, String model, ObjectMapper objectMapper) {
         this.baseUrl = baseUrl;
         this.model = model;
         this.objectMapper = objectMapper;
 
-        Timeout connectTimeout = Timeout.ofSeconds(5);
+        Timeout connectTimeout = Timeout.ofSeconds(3);
         Timeout socketTimeout = Timeout.ofSeconds(60);
 
         // 连接池 + keep-alive：复用 TCP 连接，弱网/多次请求下减少握手开销
@@ -96,9 +104,9 @@ public class OllamaLlmProvider implements LlmProvider {
                 + "Your role: " + role + "\n"
                 + "Recent conversation:\n" + historyText + "\n"
                 + "User just said: " + userInput + "\n"
-                + "Reply naturally in English as " + role + ". Provide a Chinese translation.\n"
+                + "Reply naturally in English as " + role + " in 1-2 short sentences. Provide a Chinese translation.\n"
                 + "Respond ONLY with JSON: {\"en\": \"...\", \"zh\": \"...\"}";
-        String content = chat(prompt, true);
+        String content = chat(prompt, true, 150);
         if (content != null) {
             JsonNode node = parseJson(content);
             if (node != null && node.hasNonNull("en")) {
@@ -113,10 +121,11 @@ public class OllamaLlmProvider implements LlmProvider {
         String prompt = "You are an English oral tutor. Evaluate the learner's sentence below.\n"
                 + "Score pronunciation (pron), fluency, reaction and naturalness on a 0-100 scale.\n"
                 + "Also provide grammarFeedback, a list of phonemeIssues (word/phoneme/note) and an optional betterExpression.\n"
+                + "Be brief: every text field under 15 words, at most 2 phonemeIssues.\n"
                 + "Sentence: " + userInput + "\n"
                 + "Respond ONLY with JSON: {\"pron\":0,\"fluency\":0,\"reaction\":0,\"natural\":0,"
                 + "\"grammarFeedback\":\"\",\"phonemeIssues\":[{\"word\":\"\",\"phoneme\":\"\",\"note\":\"\"}],\"betterExpression\":\"\"}";
-        String content = chat(prompt, true);
+        String content = chat(prompt, true, 300);
         if (content != null) {
             JsonNode node = parseJson(content);
             if (node != null) {
@@ -142,6 +151,62 @@ public class OllamaLlmProvider implements LlmProvider {
             }
         }
         return fallback.evaluate(userInput);
+    }
+
+    @Override
+    public LevelJudgement judgeLevel(List<String> answers) {
+        String joined;
+        if (answers == null || answers.isEmpty()) {
+            joined = "";
+        } else {
+            joined = IntStream.range(0, answers.size())
+                    .mapToObj(i -> "Q" + (i + 1) + ": " + (answers.get(i) == null ? "" : answers.get(i).trim()))
+                    .collect(Collectors.joining("\n"));
+        }
+        if (joined.isBlank()) {
+            return new LevelJudgement("A1", 10, "No valid answers were provided.");
+        }
+        String prompt = "You are an English placement examiner. The learner answered three oral questions:\n"
+                + joined + "\n"
+                + "Judge content quality ONLY: relevance to each question, grammar, vocabulary range, completeness. "
+                + "Random, memorized, meaningless or off-topic answers must score below 40.\n"
+                + "Give an overall score 0-100 and the CEFR level consistent with it: "
+                + "0-39=A1, 40-54=A2, 55-69=B1, 70-79=B2, 80-89=C1, 90+=C2. Comment in under 20 words.\n"
+                + "Respond ONLY with JSON: {\"score\":0,\"level\":\"A1\",\"comment\":\"\"}";
+        String content = chat(prompt, true, 200);
+        if (content != null) {
+            JsonNode node = parseJson(content);
+            if (node != null) {
+                int score = clampScore(node.path("score").asInt(-1));
+                String level = normalizeLevel(node.path("level").asText(null), score);
+                if (level != null) {
+                    return new LevelJudgement(level, score, node.path("comment").asText(""));
+                }
+            }
+        }
+        return fallback.judgeLevel(answers);
+    }
+
+    private static int clampScore(int score) {
+        if (score < 0) return 0;
+        return Math.min(score, 100);
+    }
+
+    /** 模型给的等级与分数冲突时，以分数为准 */
+    private static String normalizeLevel(String level, int score) {
+        if (level == null || !level.matches("(?i)A1|A2|B1|B2|C1|C2")) {
+            return scoreToLevel(score);
+        }
+        return level.toUpperCase();
+    }
+
+    private static String scoreToLevel(int score) {
+        if (score < 40) return "A1";
+        if (score < 55) return "A2";
+        if (score < 70) return "B1";
+        if (score < 80) return "B2";
+        if (score < 90) return "C1";
+        return "C2";
     }
 
     @Override
@@ -209,17 +274,27 @@ public class OllamaLlmProvider implements LlmProvider {
     private static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_BASE_DELAY_MS = 500;
 
-    private String chat(String prompt, boolean json) {
+    private String chat(String prompt, boolean json, int numPredict) {
+        // 熔断期内不再发起请求，直接回退，省去每次的连接超时等待
+        if (System.currentTimeMillis() < unavailableUntil) {
+            return null;
+        }
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                return doChat(prompt, json);
-            } catch (ResourceAccessException e) {
-                // 弱网下的连接失败/读超时/连接被重置多为瞬时抖动，指数退避重试可明显提升成功率
-                if (attempt == MAX_ATTEMPTS) {
-                    log.warn("Ollama 网络异常（已重试 {} 次），回退到 mock：{}", MAX_ATTEMPTS, e.getMessage());
-                    return null;
+                String content = doChat(prompt, json, numPredict);
+                if (content != null) {
+                    consecutiveFailures.set(0);
+                    unavailableUntil = 0L;
                 }
-                sleepBeforeRetry(attempt);
+                return content;
+            } catch (ResourceAccessException e) {
+                // 只有读超时才值得重试；服务器不可达时重试只会成倍拉长等待
+                if (isReadTimeout(e) && attempt < MAX_ATTEMPTS) {
+                    sleepBeforeRetry(attempt);
+                    continue;
+                }
+                onUnavailable("网络异常", e.getMessage());
+                return null;
             } catch (Exception e) {
                 // 非网络类错误（如响应不是 JSON）重试无意义，直接回退
                 log.warn("Ollama 调用失败，回退到 mock：{}", e.getMessage());
@@ -229,7 +304,31 @@ public class OllamaLlmProvider implements LlmProvider {
         return null;
     }
 
-    private String doChat(String prompt, boolean json) throws Exception {
+    /** 区分读超时与连接失败：只有前者值得重试 */
+    private static boolean isReadTimeout(ResourceAccessException e) {
+        Throwable t = e.getCause();
+        while (t != null) {
+            if (t instanceof java.net.SocketTimeoutException) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
+    /** 记录失败，达到阈值后打开熔断 */
+    private void onUnavailable(String reason, String detail) {
+        int failures = consecutiveFailures.incrementAndGet();
+        if (failures >= FAILURE_THRESHOLD) {
+            unavailableUntil = System.currentTimeMillis() + COOLDOWN_MS;
+            log.warn("Ollama {}（连续 {} 次），{} 分钟内直接回退 mock：{}",
+                    reason, failures, COOLDOWN_MS / 60000, detail);
+        } else {
+            log.warn("Ollama {}，回退到 mock：{}", reason, detail);
+        }
+    }
+
+    private String doChat(String prompt, boolean json, int numPredict) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("stream", false);
@@ -237,6 +336,13 @@ public class OllamaLlmProvider implements LlmProvider {
         if (json) {
             body.put("format", "json");
         }
+        // 限制最大生成长度：模型啰嗦时是响应慢的主因
+        Map<String, Object> options = new LinkedHashMap<>();
+        options.put("num_predict", numPredict);
+        options.put("temperature", 0.7);
+        body.put("options", options);
+        // 模型常驻内存，避免每句话都重新加载 4.7GB 权重
+        body.put("keep_alive", "30m");
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);

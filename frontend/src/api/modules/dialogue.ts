@@ -1,6 +1,7 @@
 import { http } from '../request'
 import type {
   DialogueSummaryDto,
+  MessageAssessmentDto,
   MessageReplyResult,
   Page,
   SessionDto,
@@ -34,4 +35,9 @@ export function finishSession(sessionId: number) {
 
 export function getSessionSummary(sessionId: number) {
   return http.get<DialogueSummaryDto>(`/dialogues/sessions/${sessionId}/summary`)
+}
+
+/** 拉取某条用户消息的口语评分（后端异步产出，ready 为 true 表示已出分） */
+export function getMessageAssessment(sessionId: number, messageId: number) {
+  return http.get<MessageAssessmentDto>(`/dialogues/sessions/${sessionId}/messages/${messageId}/assessment`)
 }

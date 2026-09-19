@@ -12,6 +12,8 @@ public interface AssessmentRecordRepository extends JpaRepository<AssessmentReco
 
     List<AssessmentRecord> findBySessionIdOrderByAssessId(Integer sessionId);
 
+    AssessmentRecord findFirstBySessionIdAndMessageIdOrderByAssessIdDesc(Integer sessionId, Integer messageId);
+
     @Query("select a from AssessmentRecord a, ConversationSession s " +
             "where a.sessionId = s.sessionId and s.userId = :userId " +
             "order by a.assessId desc")
