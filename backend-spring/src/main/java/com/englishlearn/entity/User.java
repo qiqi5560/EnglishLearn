@@ -47,6 +47,14 @@ public class User {
     @Column(name = "status")
     public Integer status;
 
+    /** 发帖处罚截止时间：为空或早于当前时间表示未受处罚（管理后台社区治理） */
+    @Column(name = "ban_until")
+    public LocalDateTime banUntil;
+
+    /** 处罚原因，展示给用户 */
+    @Column(name = "ban_reason", length = 255)
+    public String banReason;
+
     @Column(name = "register_time")
     public LocalDateTime registerTime;
 

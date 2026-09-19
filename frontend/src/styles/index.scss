@@ -85,15 +85,145 @@ a {
 // ------------------------------------------------------------
 .page {
   min-height: 100%;
-  padding-bottom: 72px; // 为底部 Tab 预留空间
+  animation: page-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+// 桌面端定宽居中容器：替代移动端的「全宽 + 16px 内边距」观感
+.page-shell {
+  width: min(1180px, calc(100% - 80px));
+  margin: 0 auto;
+  padding: 32px 0 72px;
+}
+
+.page-shell--wide {
+  width: min(1440px, calc(100% - 80px));
+}
+
+.page-shell--narrow {
+  width: min(920px, calc(100% - 80px));
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  margin: 20px 0 12px;
+  letter-spacing: -0.02em;
+  margin: 24px 0 14px;
 }
 
 .text-muted {
   color: var(--muted);
+}
+
+// ------------------------------------------------------------
+// 苹果风公共外观
+// ------------------------------------------------------------
+.glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(31, 42, 68, 0.07);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 14px 34px rgba(31, 42, 68, 0.06);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+.hover-lift {
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  border-color: rgba(59, 111, 224, 0.24);
+  box-shadow: 0 20px 44px rgba(31, 42, 68, 0.13);
+}
+
+// 卡片斜向扫光：hover 时一道高光掠过
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.68), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sheen:hover::after {
+  animation: sheen-sweep 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+// 交错入场：列表/网格逐项浮现
+.stagger > * {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(n + 6) { animation-delay: 0.22s; }
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheen-sweep {
+  0% {
+    left: -60%;
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    left: 130%;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .stagger > *,
+  .sheen:hover::after {
+    animation: none;
+  }
+}
+
+// 窄屏兜底：容器收窄，保证小窗口仍可用（桌面优先，非移动端样式）
+@media (max-width: 900px) {
+  .page-shell,
+  .page-shell--wide,
+  .page-shell--narrow {
+    width: calc(100% - 32px);
+    padding: 20px 0 48px;
+  }
 }

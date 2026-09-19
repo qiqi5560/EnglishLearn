@@ -25,6 +25,10 @@ export interface UserDto {
   level?: string | null
   registerTime?: string | null
   lastLoginTime?: string | null
+  /** 发帖处罚 */
+  banUntil?: string | null
+  banReason?: string | null
+  punished?: boolean
 }
 
 export interface LoginResult {
@@ -255,4 +259,217 @@ export interface SystemConfig {
   speech: { slowSpeed: number; normalSpeed: number }
   recommend: { content: boolean; collab: boolean; model: boolean }
   audit: { content: boolean; manual: boolean }
+}
+
+/** ==================== 管理后台：运营洞察 ==================== */
+
+/** 用户使用报表 */
+export interface AdminUsageSummary {
+  days: number
+  totalUsers: number
+  activeUsers: number
+  newUsers: number
+  totalSessions: number
+  totalDurationMin: number
+  avgScore: number
+  activeRate: number
+  punishedUsers: number
+}
+
+export interface AdminUsageRow {
+  userId: number
+  nickname?: string | null
+  phone: string
+  role: string
+  level?: string | null
+  status: number
+  sessionCount: number
+  durationMin: number
+  studyCount: number
+  avgScore?: number | null
+  lastLoginTime?: string | null
+  registerTime?: string | null
+  active: boolean
+  punished?: boolean
+  banUntil?: string | null
+  banReason?: string | null
+}
+
+export interface AdminUsageReport {
+  summary: AdminUsageSummary
+  /** 近 12 个月注册分布 */
+  monthly: { months: string[]; values: number[]; peak: number }
+  list: AdminUsageRow[]
+}
+
+/** 日活动量 */
+export interface AdminActivity {
+  summary: {
+    days: number
+    avgActive: number
+    peakActive: number
+    todayActive: number
+    todaySessions: number
+  }
+  trend: {
+    dates: string[]
+    activeUsers: number[]
+    sessions: number[]
+    studyRecords: number[]
+    newUsers: number[]
+    durationMin: number[]
+  }
+  list: {
+    date: string
+    activeUsers: number
+    newUsers: number
+    sessions: number
+    studyRecords: number
+    durationMin: number
+  }[]
+}
+
+/** 算力监控 */
+export interface AdminCompute {
+  provider: {
+    provider: string
+    model: string
+    baseUrl: string
+    reachable: boolean
+    degraded: boolean
+  }
+  totalCalls: number
+  failedCalls: number
+  successCalls: number
+  successRate: number
+  avgLatencyMs: number
+  maxLatencyMs: number
+  windowCalls: number
+  methods: { method: string; count: number; failed: number; avgLatencyMs: number }[]
+  timeline: { labels: string[]; values: number[] }
+  recent: { time: string; method: string; provider: string; latencyMs: number; ok: boolean; note: string }[]
+  checkedAt: string
+}
+
+/** 系统概览 */
+export interface AdminSystemOverview {
+  runtime: {
+    uptimeSec: number
+    heapUsedMb: number
+    heapMaxMb: number
+    heapUsedPercent: number
+    threads: number
+    processors: number
+    javaVersion: string
+    os: string
+    startedAt: string
+  }
+  database: {
+    file: string
+    sizeMb: number
+    tables: { name: string; count: number }[]
+  }
+  audit: {
+    total: number
+    recent: {
+      time: string
+      operator: string
+      operatorId?: number | null
+      module: string
+      action: string
+      detail: string
+    }[]
+  }
+  status: string
+}
+
+/** 操作日志条目 */
+export interface AuditLogEntry {
+  time: string
+  operator: string
+  operatorId?: number | null
+  module: string
+  action: string
+  detail: string
+}
+
+/** 操作日志模块统计 */
+export interface AuditLogModuleStat {
+  name: string
+  count: number
+}
+
+/** 管理员操作日志 */
+export interface AdminAuditLog {
+  total: number
+  modules: AuditLogModuleStat[]
+  list: AuditLogEntry[]
+}
+
+/** 管理员维护的名句素材 */
+export interface AdminQuoteDto {
+  quoteId: number
+  title: string
+  source?: string | null
+  category?: string | null
+  level?: string | null
+  textEn: string
+  textZh?: string | null
+  builtin: boolean
+  ownerId?: number | null
+  wordCount: number
+}
+
+/** ==================== 名句跟读 ==================== */
+
+/** 名句素材（内置 15 条 + 用户自建） */
+export interface QuoteDto {
+  quoteId: number
+  title: string
+  source: string
+  category: string
+  level: string
+  textEn: string
+  textZh?: string | null
+  builtin: boolean
+  wordCount: number
+  createTime: string
+}
+
+/** 导入素材的段落：en 原文，zh 译文（未翻译为 null） */
+export interface ParagraphDto {
+  en: string
+  zh?: string | null
+}
+
+/** 导入素材（列表项，不含段落） */
+export interface DocBriefDto {
+  docId: number
+  title: string
+  sourceType: string
+  paragraphCount: number
+  createTime: string
+}
+
+/** 导入素材（详情，含段落） */
+export interface DocDto {
+  docId: number
+  title: string
+  sourceType: string
+  paragraphCount: number
+  paragraphs: ParagraphDto[]
+  createTime: string
+}
+
+/** AI 跟读评测结果 */
+export interface ReadEvalDto {
+  total: number
+  pron: number
+  fluency: number
+  natural: number
+  completion: number
+  accuracy: number
+  missingWords: string[]
+  feedback: string
+  tips: string[]
 }

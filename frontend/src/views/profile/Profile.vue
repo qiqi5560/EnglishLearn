@@ -2,51 +2,70 @@
   <div class="profile page">
     <AppHeader title="我的" />
 
-    <div v-loading="loading" class="profile-body">
+    <div v-loading="loading" class="page-shell profile-body">
       <template v-if="userStore.userInfo">
-        <!-- 用户信息卡 -->
-        <el-card shadow="never" class="user-card">
-          <div class="user-row">
-            <el-avatar :size="56" class="user-avatar" :src="userStore.userInfo.avatarUrl || undefined">
+        <div class="profile-grid">
+          <!-- ==================== 左栏：用户信息卡 ==================== -->
+          <section class="user-card glass-card hover-lift peek-host">
+            <PeekMascot class="user-mascot" :size="58" />
+
+            <el-avatar :size="76" class="user-avatar" :src="userStore.userInfo.avatarUrl || undefined">
               {{ userStore.userInfo.nickname?.[0]?.toUpperCase() || 'U' }}
             </el-avatar>
-            <div class="user-meta">
-              <div class="user-nickname">{{ userStore.userInfo.nickname || '未设置昵称' }}</div>
-              <div class="text-muted user-phone">{{ maskPhone(userStore.userInfo.phone) }}</div>
+
+            <h2 class="user-nickname">{{ userStore.userInfo.nickname || '未设置昵称' }}</h2>
+            <p class="user-phone text-muted">{{ maskPhone(userStore.userInfo.phone) }}</p>
+
+            <div class="user-tags">
+              <el-tag type="info" size="small" effect="plain">{{ ageGroupLabel }}</el-tag>
+              <LevelTag :level="userStore.level || 'A1'" />
             </div>
-            <el-button size="small" @click="editVisible = true">编辑</el-button>
-          </div>
-          <div class="user-tags">
-            <el-tag type="info" size="small" effect="plain">{{ ageGroupLabel }}</el-tag>
-            <span class="text-muted">水平等级</span>
-            <LevelTag :level="userStore.level || 'A1'" />
-          </div>
-        </el-card>
 
-        <!-- 学习导航 -->
-        <el-card shadow="never" class="menu-card">
-          <div class="menu-item" @click="$router.push('/plan')">
-            <span class="menu-label">📋 我的学习方案</span>
-            <el-icon><ArrowRight /></el-icon>
-          </div>
-          <div class="menu-item" @click="$router.push('/report')">
-            <span class="menu-label">📊 学习报表</span>
-            <el-icon><ArrowRight /></el-icon>
-          </div>
-          <div class="menu-item" @click="$router.push('/settings')">
-            <span class="menu-label">⚙️ 设置</span>
-            <el-icon><ArrowRight /></el-icon>
-          </div>
-          <div class="menu-item" @click="$router.push('/partners')">
-            <span class="menu-label">👥 搭子组队</span>
-            <el-icon><ArrowRight /></el-icon>
-          </div>
-        </el-card>
+            <el-button class="edit-btn" @click="openEdit">
+              <el-icon><EditPen /></el-icon>
+              编辑资料
+            </el-button>
+          </section>
 
-        <el-button class="logout-btn" @click="onLogout">退出登录</el-button>
+          <!-- ==================== 右栏：学习导航 ==================== -->
+          <section class="nav-card glass-card">
+            <header class="nav-head">
+              <h3>学习导航</h3>
+              <p class="text-muted">方案、报表、设置与搭子都在这里</p>
+            </header>
+
+            <div class="nav-grid stagger">
+              <div class="nav-item" @click="$router.push('/plan')">
+                <span class="nav-icon"><el-icon><Notebook /></el-icon></span>
+                <span class="nav-label">我的学习方案</span>
+                <el-icon class="nav-arrow"><ArrowRight /></el-icon>
+              </div>
+              <div class="nav-item" @click="$router.push('/report')">
+                <span class="nav-icon"><el-icon><TrendCharts /></el-icon></span>
+                <span class="nav-label">学习报表</span>
+                <el-icon class="nav-arrow"><ArrowRight /></el-icon>
+              </div>
+              <div class="nav-item" @click="$router.push('/settings')">
+                <span class="nav-icon"><el-icon><Setting /></el-icon></span>
+                <span class="nav-label">设置</span>
+                <el-icon class="nav-arrow"><ArrowRight /></el-icon>
+              </div>
+              <div class="nav-item" @click="$router.push('/partners')">
+                <span class="nav-icon"><el-icon><UserFilled /></el-icon></span>
+                <span class="nav-label">搭子组队</span>
+                <el-icon class="nav-arrow"><ArrowRight /></el-icon>
+              </div>
+            </div>
+
+            <div class="nav-foot">
+              <span class="text-muted">退出后需要重新登录</span>
+              <el-button class="logout-btn" @click="onLogout">退出登录</el-button>
+            </div>
+          </section>
+        </div>
 
         <!-- 编辑资料弹窗 -->
-        <el-dialog v-model="editVisible" title="编辑资料" width="80%" align-center>
+        <el-dialog v-model="editVisible" title="编辑资料" width="440px" align-center>
           <el-form label-position="top">
             <el-form-item label="昵称">
               <el-input v-model="editForm.nickname" maxlength="20" placeholder="请输入昵称" />
@@ -76,6 +95,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppHeader from '@/components/base/AppHeader.vue'
+import PeekMascot from '@/components/base/PeekMascot.vue'
 import LevelTag from '@/components/business/LevelTag.vue'
 import { useUserStore } from '@/stores/user'
 
@@ -154,67 +174,234 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+$ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
+$ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
 .profile-body {
-  padding: 16px;
   min-height: 60vh;
 }
 
+// ---------------- 桌面两栏：左信息卡 + 右导航 ----------------
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+// ==================== 左栏：用户信息卡 ====================
 .user-card {
-  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 28px 28px;
+  text-align: center;
+}
 
-  .user-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
+.user-mascot {
+  margin-bottom: -6px;
+}
 
-  .user-avatar {
-    background: var(--primary);
-    color: #fff;
-    flex-shrink: 0;
-  }
+.user-avatar {
+  flex: 0 0 auto;
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(150deg, var(--primary), var(--ink));
+  color: #fff;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 26px rgba(31, 42, 68, 0.14);
+  transition: transform 0.5s $ease-spring;
+}
 
-  .user-meta {
-    flex: 1;
-    min-width: 0;
+.user-card:hover .user-avatar {
+  transform: scale(1.05);
+}
 
-    .user-nickname {
-      font-size: 18px;
-      font-weight: 700;
-    }
+.user-nickname {
+  margin: 16px 0 0;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  word-break: break-all;
+}
 
-    .user-phone {
-      font-size: 12px;
-    }
-  }
+.user-phone {
+  margin: 6px 0 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
 
-  .user-tags {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
+.user-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.edit-btn {
+  width: 100%;
+  height: 42px;
+  margin-top: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 111, 224, 0.24);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--primary);
+  font-weight: 600;
+  transition:
+    transform 0.35s $ease-apple,
+    box-shadow 0.35s $ease-apple,
+    background 0.3s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    background: #fff;
+    border-color: rgba(59, 111, 224, 0.4);
+    box-shadow: 0 14px 28px rgba(59, 111, 224, 0.2);
   }
 }
 
-.menu-card {
+// ==================== 右栏：学习导航 ====================
+.nav-card {
+  padding: 26px 28px 22px;
+}
+
+.nav-head {
+  h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    margin: 7px 0 0;
+    font-size: 13px;
+  }
+}
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  min-width: 0;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+  transition:
+    transform 0.35s $ease-apple,
+    box-shadow 0.35s $ease-apple,
+    border-color 0.3s ease,
+    background 0.3s ease;
 
-  .menu-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 0;
-    cursor: pointer;
+  &:hover {
+    transform: translateY(-3px);
+    background: #fff;
+    border-color: rgba(59, 111, 224, 0.28);
+    box-shadow: var(--shadow-md);
 
-    & + .menu-item {
-      border-top: 1px solid var(--border);
+    .nav-icon {
+      color: #fff;
+      background: linear-gradient(150deg, var(--primary), var(--ink));
+    }
+
+    .nav-arrow {
+      color: var(--primary);
+      transform: translateX(4px);
     }
   }
+}
+
+.nav-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  border-radius: 12px;
+  color: var(--primary);
+  background: rgba(59, 111, 224, 0.1);
+  transition:
+    background 0.35s ease,
+    color 0.35s ease,
+    transform 0.45s $ease-spring;
+}
+
+.nav-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-arrow {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--muted);
+  transition:
+    transform 0.35s $ease-apple,
+    color 0.3s ease;
+}
+
+.nav-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
 }
 
 .logout-btn {
-  width: 100%;
-  margin-top: 16px;
+  height: 40px;
+  padding: 0 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  transition:
+    transform 0.35s $ease-apple,
+    box-shadow 0.35s $ease-apple;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+@media (max-width: 900px) {
+  .profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .user-card {
+    padding: 18px 20px 24px;
+  }
+
+  .nav-card {
+    padding: 22px 20px 18px;
+  }
+
+  .nav-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

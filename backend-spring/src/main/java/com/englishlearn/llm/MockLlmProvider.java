@@ -216,6 +216,107 @@ public class MockLlmProvider implements LlmProvider {
         return from + RANDOM.nextDouble() * (to - from);
     }
 
+    // ------------------------------------------------------------
+    // 翻译与跟读评测（内置规则实现，Ollama 不可达时兜底）
+    // ------------------------------------------------------------
+    private static final String[][] COMMON_WORDS = {
+            {"practice", "练习"}, {"progress", "进步"}, {"brave", "勇敢的"}, {"dream", "梦想"},
+            {"fall", "跌倒"}, {"rise", "起来"}, {"yesterday", "昨天"}, {"history", "历史"},
+            {"tomorrow", "明天"}, {"mystery", "谜团"}, {"choices", "选择"}, {"abilities", "能力"},
+            {"fate", "命运"}, {"stars", "星辰"}, {"heart", "心"}, {"voice", "声音"},
+            {"panda", "熊猫"}, {"ocean", "海洋"}, {"swimming", "游泳"}, {"dreamer", "追梦者"},
+            {"bloom", "绽放"}, {"adversity", "逆境"}, {"flower", "花"}, {"greatness", "伟大"},
+            {"grown", "成长"}, {"keep", "保持"}, {"moving", "前进"}, {"forward", "向前"},
+            {"hope", "希望"}, {"good", "好的"}, {"thing", "事物"}, {"never", "永远不"},
+            {"somebody", "某人"}, {"tell", "告诉"}, {"afraid", "害怕"}, {"master", "主宰"},
+            {"soul", "灵魂"}, {"captain", "船长"}, {"adventure", "冒险"}, {"beyond", "超越"},
+            {"infinity", "无限"}, {"limits", "极限"}, {"great", "伟大的"}, {"power", "力量"},
+            {"responsibility", "责任"}, {"wish", "愿望"}, {"always", "总是"}, {"choose", "选择"},
+            {"face", "面对"}, {"courage", "勇气"}, {"believe", "相信"}, {"stronger", "更强壮"},
+            {"seem", "看起来"}, {"decide", "决定"}, {"time", "时间"}, {"given", "给予"},
+            {"worth", "值得"}, {"learn", "学习"}, {"mistakes", "错误"}, {"trying", "尝试"},
+            {"daily", "每天"}, {"small", "小"}, {"steps", "步"}, {"life", "生活"},
+            {"live", "生活"}, {"like", "像"}, {"box", "盒子"}, {"chocolates", "巧克力"},
+            {"past", "过去"}, {"hurt", "伤害"}, {"run", "跑"}, {"world", "世界"},
+            {"people", "人们"}, {"friend", "朋友"}, {"love", "爱"}, {"light", "光"},
+            {"dark", "黑暗"}, {"night", "夜晚"}, {"day", "白天"}, {"morning", "早晨"},
+            {"start", "开始"}, {"stop", "停止"}, {"try", "尝试"}, {"way", "路"},
+            {"find", "找到"}, {"give", "给予"}, {"take", "拿"}, {"make", "做"},
+            {"know", "知道"}, {"think", "想"}, {"feel", "感觉"}, {"see", "看见"},
+            {"speak", "说"}, {"word", "单词"}, {"sentence", "句子"}, {"story", "故事"},
+            {"begin", "开始"}, {"end", "结束"}, {"first", "第一"}, {"last", "最后"},
+            {"more", "更多"}, {"most", "最多"}, {"best", "最好"}, {"better", "更好"},
+    };
+
+    /** 命中内置词表则替换为中文，未命中保留原词，用于 Ollama 不可达时的离线直译 */
+    static String gloss(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[A-Za-z']+|[^A-Za-z']+").matcher(text);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String token = m.group();
+            if (token.isEmpty()) {
+                continue;
+            }
+            if (Character.isLetter(token.charAt(0))) {
+                String zh = null;
+                for (String[] pair : COMMON_WORDS) {
+                    if (pair[0].equalsIgnoreCase(token)) {
+                        zh = pair[1];
+                        break;
+                    }
+                }
+                sb.append(zh != null ? zh : token);
+            } else {
+                sb.append(token);
+            }
+        }
+        return sb.toString();
+    }
+
+    @Override
+    public List<String> translate(List<String> texts) {
+        List<String> out = new ArrayList<>();
+        if (texts == null) {
+            return out;
+        }
+        for (String t : texts) {
+            out.add(t == null || t.isBlank() ? null : gloss(t));
+        }
+        return out;
+    }
+
+    @Override
+    public EvalResult evaluateReading(String target, String spoken) {
+        EvalResult r = new EvalResult();
+        int tc = (target == null ? "" : target).trim().length();
+        int sc = (spoken == null ? "" : spoken).trim().length();
+        // 覆盖度 = 用户所说字符占参照的比例（粗粒度的完整度估计）
+        int covered = Math.min(tc, sc);
+        double coverage = tc == 0 ? 0 : (double) covered / tc;
+        double natural = clamp(58 + coverage * 30 + uniform(-3, 3), 50, 97);
+        double pron = clamp(natural + uniform(-5, 5), 50, 97);
+        double fluency = clamp(natural - (sc < 8 ? 6 : 0) + uniform(-4, 4), 50, 97);
+        double reaction = round1(coverage * 100);
+        r.pron = round1(pron);
+        r.fluency = round1(fluency);
+        r.reaction = reaction;
+        r.natural = round1(natural);
+        String fb;
+        if (coverage < 0.5) {
+            fb = "只读到了原句的一部分，建议先逐句慢读，把每个单词念清楚。";
+        } else if (coverage < 0.9) {
+            fb = "大部分读到位了，试着把长句分段，稳住节奏再连起来。";
+        } else {
+            fb = "读得很完整，语调自然。继续保持，注意重音与情感。";
+        }
+        r.grammarFeedback = fb;
+        r.phonemeIssues = new ArrayList<>();
+        if (sc > 0 && (target != null && target.toLowerCase().contains("the"))) {
+            r.phonemeIssues.add(Map.of("word", "the", "phoneme", "/ðə/", "note", "th 需舌尖轻触上齿"));
+        }
+        return r;
+    }
+
     private static double clamp(double v, double lo, double hi) {
         double r = Math.min(hi, Math.max(lo, v));
         return Math.round(r * 10.0) / 10.0;

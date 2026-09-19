@@ -49,8 +49,13 @@ instance.interceptors.response.use(
   (err) => {
     const resp = err?.response
 
-    // 401 登录过期：清理登录态并跳转登录页（逻辑保持不变）
+    // 401：登录/注册接口自身的 401（验证码错误、账号或密码错误等）要展示后端提示；
+    // 其余接口的 401 视为登录过期，清理登录态并回登录页（逻辑保持不变）
     if (resp?.status === 401) {
+      if (isAuthPage(window.location.pathname)) {
+        ElMessage.error(resp?.data?.message || '登录失败，请检查填写的信息')
+        return Promise.reject(err)
+      }
       handleUnauthorized()
       return Promise.reject(err)
     }

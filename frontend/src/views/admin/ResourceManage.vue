@@ -1,11 +1,24 @@
 <template>
-  <div>
+  <div class="page page-shell page-shell--wide">
+    <header class="page-head">
+      <h1 class="page-title">资源管理</h1>
+      <p class="page-desc">管理精听、跟读、口语与动画资源的上架状态</p>
+    </header>
+
     <div class="toolbar">
-      <el-input v-model="keyword" placeholder="搜索资源标题" clearable style="width: 240px" @keyup.enter="loadRows(1)">
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-      </el-input>
+      <div class="toolbar-left">
+        <el-input
+          v-model="keyword"
+          class="toolbar-search"
+          placeholder="搜索资源标题"
+          clearable
+          @keyup.enter="loadRows(1)"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
       <div class="toolbar-right">
         <el-button @click="loadRows(1)">查询</el-button>
         <el-button type="primary" @click="openDialog()">
@@ -14,7 +27,7 @@
       </div>
     </div>
 
-    <el-card shadow="never">
+    <el-card shadow="never" class="table-card">
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" />
@@ -53,7 +66,7 @@
     </el-card>
 
     <!-- 新建 / 编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资源' : '上传资源'" width="90%" align-center>
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资源' : '上传资源'" width="520px" align-center>
       <el-form label-position="top">
         <el-form-item label="标题">
           <el-input v-model="form.title" placeholder="请输入资源标题" />
@@ -206,19 +219,160 @@ onMounted(() => loadRows(1))
 </script>
 
 <style scoped lang="scss">
+$ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.page-desc {
+  margin: 7px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+// ---------------- 工具条 ----------------
 .toolbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(31, 42, 68, 0.07);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
 
-  .toolbar-right {
-    display: flex;
-    gap: 8px;
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-search {
+  width: 280px;
+}
+
+// ---------------- 表格卡片 ----------------
+.table-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(31, 42, 68, 0.07);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+
+  :deep(.el-card__body) {
+    padding: 16px 20px 18px;
   }
 }
 
+:deep(.el-table) {
+  --el-table-border-color: var(--border);
+  --el-table-header-bg-color: var(--surface);
+  --el-table-row-hover-bg-color: rgba(59, 111, 224, 0.06);
+  --el-table-text-color: var(--ink);
+  font-size: 14px;
+  border-radius: var(--radius-md);
+}
+
+:deep(.el-table th.el-table__cell) {
+  background: var(--surface);
+  color: #55617e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:deep(.el-table .el-table__cell) {
+  padding: 12px 0;
+}
+
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell) {
+  background: rgba(246, 247, 251, 0.6);
+}
+
+:deep(.el-table__body tr.el-table__row td.el-table__cell) {
+  transition: background 0.28s $ease-apple;
+}
+
+:deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+
 .pager {
-  margin-top: 16px;
+  margin-top: 18px;
   justify-content: flex-end;
+}
+
+// ---------------- 弹窗 ----------------
+:deep(.el-dialog) {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(31, 42, 68, 0.07);
+  box-shadow: 0 30px 70px rgba(31, 42, 68, 0.2);
+  overflow: hidden;
+}
+
+:deep(.el-dialog__header) {
+  margin: 0;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+:deep(.el-dialog__title) {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+:deep(.el-dialog__body) {
+  padding: 20px 24px 6px;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 12px 24px 20px;
+}
+
+:deep(.el-form-item__label) {
+  padding-bottom: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5c6579;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 900px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-search {
+    width: 100%;
+  }
+
+  .toolbar-right {
+    justify-content: flex-end;
+  }
 }
 </style>

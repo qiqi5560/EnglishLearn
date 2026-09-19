@@ -39,17 +39,24 @@ const color = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.score-ring:hover {
+  transform: translateY(-3px) scale(1.04);
 }
 
 .score-value {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: var(--ink);
 }
 
 .score-label {
   font-size: 12px;
+  font-weight: 600;
   color: var(--muted);
 }
 </style>

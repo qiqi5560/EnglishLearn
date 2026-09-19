@@ -150,6 +150,62 @@ public class OllamaLlmProvider implements LlmProvider {
         return fallback.summarize(messages, evaluations);
     }
 
+    @Override
+    public List<String> translate(List<String> texts) {
+        if (texts == null) {
+            return new ArrayList<>();
+        }
+        List<String> out = new ArrayList<>(texts.size());
+        for (String t : texts) {
+            if (t == null || t.isBlank()) {
+                out.add(null);
+                continue;
+            }
+            String prompt = "Translate the following English passage into fluent, natural Chinese.\n"
+                    + "Respond ONLY with the Chinese translation, no extra text.\n\n"
+                    + "Passage: " + t;
+            String content = chat(prompt, false);
+            out.add(content != null && !content.isBlank() ? content.trim() : fallback.gloss(t));
+        }
+        return out;
+    }
+
+    @Override
+    public EvalResult evaluateReading(String target, String spoken) {
+        String prompt = "You are an English reading-tutor. Compare the learner's spoken reading against the reference text.\n"
+                + "Score pronunciation (pron), fluency and naturalness (natural) on a 0-100 scale, and completion (reaction) as how fully the learner read the reference.\n"
+                + "Provide a friendly grammarFeedback and a list of phonemeIssues (word/phoneme/note).\n\n"
+                + "Reference: " + target + "\n\n"
+                + "Learner spoke: " + spoken + "\n"
+                + "Respond ONLY with JSON: {\"pron\":0,\"fluency\":0,\"reaction\":0,\"natural\":0,"
+                + "\"grammarFeedback\":\"\",\"phonemeIssues\":[{\"word\":\"\",\"phoneme\":\"\",\"note\":\"\"}]}";
+        String content = chat(prompt, true);
+        if (content != null) {
+            JsonNode node = parseJson(content);
+            if (node != null) {
+                EvalResult r = new EvalResult();
+                r.pron = node.path("pron").asDouble();
+                r.fluency = node.path("fluency").asDouble();
+                r.reaction = node.path("reaction").asDouble();
+                r.natural = node.path("natural").asDouble();
+                r.grammarFeedback = node.path("grammarFeedback").asText(null);
+                r.phonemeIssues = new ArrayList<>();
+                JsonNode issues = node.path("phonemeIssues");
+                if (issues.isArray()) {
+                    for (JsonNode it : issues) {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("word", it.path("word").asText(""));
+                        item.put("phoneme", it.path("phoneme").asText(""));
+                        item.put("note", it.path("note").asText(""));
+                        r.phonemeIssues.add(item);
+                    }
+                }
+                return r;
+            }
+        }
+        return fallback.evaluateReading(target, spoken);
+    }
+
     private static final int MAX_ATTEMPTS = 3;
     private static final long RETRY_BASE_DELAY_MS = 500;
 

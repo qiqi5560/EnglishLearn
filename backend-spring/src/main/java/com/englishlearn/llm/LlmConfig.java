@@ -15,10 +15,11 @@ public class LlmConfig {
     public LlmProvider llmProvider(@Value("${llm.provider:mock}") String provider,
                                    @Value("${llm.ollama.base-url:http://localhost:11434}") String baseUrl,
                                    @Value("${llm.ollama.model:qwen2.5:7b-instruct}") String model,
-                                   ObjectMapper objectMapper) {
-        if ("ollama".equalsIgnoreCase(provider)) {
-            return new OllamaLlmProvider(baseUrl, model, objectMapper);
-        }
-        return new MockLlmProvider();
+                                   ObjectMapper objectMapper,
+                                   LlmMetrics metrics) {
+        LlmProvider delegate = "ollama".equalsIgnoreCase(provider)
+                ? new OllamaLlmProvider(baseUrl, model, objectMapper)
+                : new MockLlmProvider();
+        return new MeteredLlmProvider(delegate, metrics);
     }
 }

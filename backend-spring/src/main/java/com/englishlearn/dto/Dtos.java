@@ -41,6 +41,9 @@ public final class Dtos {
         m.put("level", level);
         m.put("registerTime", TimeUtil.iso(user.registerTime));
         m.put("lastLoginTime", TimeUtil.iso(user.lastLoginTime));
+        m.put("banUntil", TimeUtil.iso(user.banUntil));
+        m.put("banReason", user.banReason);
+        m.put("punished", user.banUntil != null && user.banUntil.isAfter(java.time.LocalDateTime.now()));
         return m;
     }
 

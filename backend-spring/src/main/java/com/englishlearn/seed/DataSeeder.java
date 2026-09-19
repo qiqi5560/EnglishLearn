@@ -9,6 +9,7 @@ import com.englishlearn.entity.ConversationSession;
 import com.englishlearn.entity.DailyTask;
 import com.englishlearn.entity.LearningPlan;
 import com.englishlearn.entity.LearningResource;
+import com.englishlearn.entity.QuoteMaterial;
 import com.englishlearn.entity.Scene;
 import com.englishlearn.entity.StudyRecord;
 import com.englishlearn.entity.SysConfig;
@@ -21,6 +22,7 @@ import com.englishlearn.repository.ConversationSessionRepository;
 import com.englishlearn.repository.DailyTaskRepository;
 import com.englishlearn.repository.LearningPlanRepository;
 import com.englishlearn.repository.LearningResourceRepository;
+import com.englishlearn.repository.QuoteMaterialRepository;
 import com.englishlearn.repository.SceneRepository;
 import com.englishlearn.repository.StudyRecordRepository;
 import com.englishlearn.repository.SysConfigRepository;
@@ -61,6 +63,7 @@ public class DataSeeder implements CommandLineRunner {
     private final AssessmentRecordRepository assessmentRepository;
     private final StudyRecordRepository studyRecordRepository;
     private final SysConfigRepository configRepository;
+    private final QuoteMaterialRepository quoteRepository;
     private final BCryptPasswordEncoder encoder;
 
     public DataSeeder(PlatformTransactionManager txManager,
@@ -76,6 +79,7 @@ public class DataSeeder implements CommandLineRunner {
                       AssessmentRecordRepository assessmentRepository,
                       StudyRecordRepository studyRecordRepository,
                       SysConfigRepository configRepository,
+                      QuoteMaterialRepository quoteRepository,
                       BCryptPasswordEncoder encoder) {
         this.tx = new TransactionTemplate(txManager);
         this.userRepository = userRepository;
@@ -90,12 +94,145 @@ public class DataSeeder implements CommandLineRunner {
         this.assessmentRepository = assessmentRepository;
         this.studyRecordRepository = studyRecordRepository;
         this.configRepository = configRepository;
+        this.quoteRepository = quoteRepository;
         this.encoder = encoder;
     }
 
     @Override
     public void run(String... args) {
         tx.executeWithoutResult(status -> seed());
+        // 名句素材库独立初始化：老库（已有场景数据）也能补上名句
+        tx.executeWithoutResult(status -> seedQuotes());
+        // 管理员账号独立初始化：老库也能补建，保证后台始终可登录
+        tx.executeWithoutResult(status -> seedAdmins());
+    }
+
+    /** 内置管理员账号（按手机号判重，可重复执行） */
+    private static final String[][] ADMIN_ACCOUNTS = {
+            {"13900000000", "管理员"},
+            {"13900000001", "运营管理员"},
+    };
+
+    private void seedAdmins() {
+        String pwd = encoder.encode("admin123");
+        for (String[] spec : ADMIN_ACCOUNTS) {
+            if (userRepository.findByPhone(spec[0]).isPresent()) {
+                continue;
+            }
+            mkUser(spec[0], spec[1], "admin", "adult", pwd);
+            log.info("seed: 已创建管理员账号 {}（{}）", spec[0], spec[1]);
+        }
+    }
+
+    /** 名句跟读素材库：15 条内置名句，每条约 50 词，带中英对照 */
+    private void seedQuotes() {
+        if (quoteRepository.countByBuiltin(1) > 0) {
+            return;
+        }
+        String[][] spec = {
+                {"阿甘正传 · 生活就像一盒巧克力", "《阿甘正传》", "A2",
+                        "My mama always said life is like a box of chocolates, and you never know what you are going to get. "
+                                + "That simple sentence has carried me through every strange road I have walked, every friend I have lost, "
+                                + "and every morning I did not understand. So I keep walking, and I keep tasting.",
+                        "妈妈常说，生活就像一盒巧克力，你永远不知道会拿到哪一颗。就是这句简单的话，陪我走过了每一段陌生的路、"
+                                + "告别了每一位朋友，也熬过了每一个我不明白的清晨。所以我继续往前走，也继续品尝。"},
+                {"蝙蝠侠 · 我们为什么会跌倒", "《蝙蝠侠：侠影之谜》", "B1",
+                        "Why do we fall? So we can learn to pick ourselves up. That question stayed with me in every dark hour of my life. "
+                                + "Falling is not the end of the story; it is only the moment that decides whether you stay down or stand again. "
+                                + "Stand up. That is the whole lesson, and it is enough.",
+                        "我们为什么会跌倒？是为了学会自己站起来。在我人生每一个黑暗的时刻，这个问题都陪着我。"
+                                + "跌倒并不是故事的终点，它只是决定你趴着还是重新站起来的那个瞬间。站起来。这就是全部的功课，也足够了。"},
+                {"星球大战 · 没有「试试看」", "《星球大战》", "B1",
+                        "Do or do not. There is no try. When I was young I thought those words were cruel. Later I understood that trying "
+                                + "is a door left half open, and half-open doors let all the courage out. Choose the thing, then move. "
+                                + "Courage is not a feeling; it is a decision you make before your hands stop shaking.",
+                        "要么做，要么不做，没有「试试看」。年轻时我觉得这句话太狠，后来才明白，「试试看」是一扇半开的门，"
+                                + "而半开的门会把勇气全部漏掉。选定那件事，然后行动。勇气不是一种感觉，而是在手还在抖之前就做下的决定。"},
+                {"狮子王 · 过去会让人痛", "《狮子王》", "B1",
+                        "The past can hurt. But you can either run from it, or learn from it. I spent years running, and the past always ran faster. "
+                                + "Then I turned around and looked at it properly, and it became smaller. It stopped being a monster. "
+                                + "What you carry, you can also put down.",
+                        "过去会让人痛。你可以选择逃避，也可以选择从中学习。我逃了很多年，可过去总跑得比我快。"
+                                + "后来我转过身，认真地看着它，它就变小了，不再是一个怪物。你背着的东西，也可以放下。"},
+                {"肖申克的救赎 · 希望是美好的", "《肖申克的救赎》", "B2",
+                        "Hope is a good thing, maybe the best of things, and no good thing ever dies. In the darkest place I have known, "
+                                + "hope was the only door that stayed unlocked. It did not make the walls thinner. It made me stronger than the walls. "
+                                + "Get busy living, or get busy dying.",
+                        "希望是美好的，也许是最美好的事物，而美好的事物永不消逝。在我所知道的最黑暗的地方，希望是唯一一扇没有上锁的门。"
+                                + "它没有让墙变薄，却让我比墙更坚固。忙着活，或者忙着死。"},
+                {"当幸福来敲门 · 守护你的梦想", "《当幸福来敲门》", "A2",
+                        "Do not ever let somebody tell you that you cannot do something. Not even me. You have a dream; you have to protect it. "
+                                + "People who cannot do something will tell you that you cannot do it too. If you want something, go get it. "
+                                + "Period. Do not explain, do not argue, just go.",
+                        "永远别让别人告诉你，你做不到。连我也不行。你有梦想，就要去守护它。那些自己做不到的人，总会告诉你你也做不到。"
+                                + "想要什么，就去争取。就这样，不必解释，不必争辩，只管去做。"},
+                {"指环王 · 如何用好被给予的时间", "《指环王》", "B2",
+                        "All we have to decide is what to do with the time that is given to us. There are other forces at work in this world "
+                                + "besides the will of evil, and there is good worth fighting for. Even the smallest person can change the course "
+                                + "of the future.",
+                        "我们要决定的，只是如何用好被给予的时间。在这个世界上，除了邪恶的意志，还有别的力量在起作用，还有值得为之奋斗的善意。"
+                                + "即使是最渺小的人，也能改变未来的走向。"},
+                {"蜘蛛侠 · 能力与责任", "《蜘蛛侠》", "B1",
+                        "With great power comes great responsibility. I learned that the hard way, and the lesson cost me someone I loved. "
+                                + "Power is not a reward; it is a bill that arrives later. Every choice you make with it belongs to you. "
+                                + "Use it well, because you cannot give it back.",
+                        "能力越大，责任越大。这个道理我是付出代价才学会的，而代价是我失去了一个爱的人。能力不是奖赏，而是一张迟到的账单。"
+                                + "你用它做出的每一个选择，都属于你自己。好好用它，因为你无法退还。"},
+                {"哈利·波特 · 决定我们的是选择", "《哈利·波特》", "B2",
+                        "It is not our abilities that show what we truly are, it is our choices. I have known brilliant people who chose the easy road "
+                                + "and ordinary people who chose the right one. When the moment comes, you will not be asked what you can do. "
+                                + "You will be asked what you choose.",
+                        "决定我们成为什么样的人的，不是能力，而是选择。我见过聪明的人选了容易的路，也见过平凡的人选了正确的路。"
+                                + "当那一刻到来时，没人会问你有什么能力，只会问你选择什么。"},
+                {"功夫熊猫 · 今天是礼物", "《功夫熊猫》", "A2",
+                        "Yesterday is history, tomorrow is a mystery, but today is a gift. That is why it is called the present. "
+                                + "I wasted a lot of days worrying about days that had not arrived yet. Now I open my eyes and ask one question: "
+                                + "what can I do today?",
+                        "昨天已成历史，明天仍是谜团，而今天是礼物，所以它被称作「present」。我浪费过很多天，去担心那些还没到来的日子。"
+                                + "现在我只睁开眼问一个问题：今天我能做点什么？"},
+                {"海底总动员 · 只管一直往前游", "《海底总动员》", "A2",
+                        "Just keep swimming. When the water gets dark and you cannot see the shore, you do not need a map. You need one more stroke. "
+                                + "I have learned that fear is loud but it is not strong; it only wins if you stop moving. "
+                                + "So keep swimming, one stroke at a time.",
+                        "只管一直往前游就好。当水变暗、看不到岸边的时候，你不需要地图，你只需要再划一下。"
+                                + "我慢慢明白，恐惧很吵，但并不强大；只有当你停下来时，它才会赢。所以继续游，一次一下。"},
+                {"飞屋环游记 · 冒险就在前方", "《飞屋环游记》", "A2",
+                        "Adventure is out there! I waited most of my life for the right moment, and the right moment never came with a bow on it. "
+                                + "It came as an ordinary Tuesday, with a shaky step and a full heart. Take the step. "
+                                + "The adventure does not start when you are ready; it starts when you move.",
+                        "冒险就在前方！我等了大半辈子，等一个「合适的时机」，而它从没有系着蝴蝶结出现。"
+                                + "它只是以一个普通的周二到来，带着一步颤抖的脚步和一颗满满的心。迈出那一步吧。"
+                                + "冒险不是在你准备好时开始，而是在你动身时开始。"},
+                {"勇敢传说 · 命运就在心里", "《勇敢传说》", "B1",
+                        "Our fate lives within us. You only have to be brave enough to see it. For a long time I looked for my destiny in "
+                                + "other people's approval, and it was never there. It was in my own hands, in my own voice, waiting for me to speak. "
+                                + "So I stopped asking, and started choosing.",
+                        "命运就在我们心里，你只需要足够勇敢去看见它。有很长一段时间，我在别人的认可里寻找自己的命运，可它从来不在那里。"
+                                + "它就在我自己的手里，在我自己的声音里，等着我开口。于是我不再追问，开始选择。"},
+                {"花木兰 · 逆境中绽放的花", "《花木兰》", "B1",
+                        "The flower that blooms in adversity is the rarest of all. Hard seasons do not destroy a good root; they only decide "
+                                + "which flowers are worth waiting for. If this year has been heavy for you, remember that you are still rooted, "
+                                + "still growing. The bloom is coming.",
+                        "逆境中绽放的花朵，最为珍贵。艰难的时节不会毁掉一条好根，它只是决定了哪一朵花值得等待。"
+                                + "如果这一年对你来说很沉重，请记住：你依然扎根，依然在生长。花就要开了。"},
+                {"教父 · 伟大是长出来的", "《教父》", "B2",
+                        "Great men are not born great, they grow great. I used to think greatness arrived like weather, something you either got "
+                                + "or did not. Then I watched ordinary people keep ordinary promises for years, and I understood. It is built. "
+                                + "Brick by brick, on days nobody claps for.",
+                        "伟人并非生来伟大，而是逐渐成长为伟大。我曾以为伟大像天气一样降临，要么得到，要么没有。"
+                                + "后来我看到平凡的人把平凡的承诺守了很多年，我才明白：伟大是一砖一瓦砌出来的，砌在那些无人喝彩的日子里。"}};
+        for (String[] q : spec) {
+            QuoteMaterial m = new QuoteMaterial();
+            m.title = q[0];
+            m.source = q[1];
+            m.category = "电影台词";
+            m.level = q[2];
+            m.textEn = q[3];
+            m.textZh = q[4];
+            m.builtin = 1;
+            quoteRepository.save(m);
+        }
+        log.info("seed: 名句素材库初始化完成，共 {} 条", spec.length);
     }
 
     private void seed() {

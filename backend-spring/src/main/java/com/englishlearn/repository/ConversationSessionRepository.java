@@ -24,4 +24,11 @@ public interface ConversationSessionRepository extends JpaRepository<Conversatio
     long countByUserIdAndSessionStatus(Integer userId, String status);
 
     long countByStartTimeBetween(LocalDateTime start, LocalDateTime end);
+
+    /** 统计区间内的会话（管理后台：日活动量 / 用户使用报表） */
+    List<ConversationSession> findByStartTimeGreaterThanEqual(LocalDateTime start);
+
+    /** 某场景下的会话数量（管理后台：删除场景前的引用校验） */
+    @Query("select count(s) from ConversationSession s where s.scene.sceneId = :sceneId")
+    long countBySceneId(@Param("sceneId") Integer sceneId);
 }

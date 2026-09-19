@@ -41,9 +41,11 @@ public class SecurityConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(
-            @Value("${app.cors-origins:http://localhost:5173}") String origins) {
+            @Value("${app.cors-origins:http://localhost:[*],http://127.0.0.1:[*]}") String origins) {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(Arrays.stream(origins.split(","))
+        // 用 originPattern 而非 origin：支持端口通配（如 http://localhost:[*]），
+        // 避免 vite 端口被占用后自动切到 5174/5175 时因 Origin 不在白名单而返回 403 Invalid CORS request
+        cfg.setAllowedOriginPatterns(Arrays.stream(origins.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList());
         cfg.setAllowedMethods(List.of("*"));
         cfg.setAllowedHeaders(List.of("*"));

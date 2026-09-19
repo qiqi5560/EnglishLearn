@@ -1,46 +1,59 @@
 <template>
-  <div v-loading="loading">
-    <div class="section-title">语音设置（F008）</div>
-    <el-card shadow="never" class="config-card">
-      <div class="setting-row">
-        <span>慢速语速</span>
-        <el-slider v-model="config.speech.slowSpeed" :min="0.5" :max="1.5" :step="0.05" style="width: 220px" />
-      </div>
-      <div class="setting-row">
-        <span>常速语速</span>
-        <el-slider v-model="config.speech.normalSpeed" :min="0.8" :max="2" :step="0.05" style="width: 220px" />
-      </div>
-    </el-card>
+  <div v-loading="loading" class="page page-shell page-shell--narrow">
+    <header class="page-head">
+      <h1 class="page-title">系统配置</h1>
+      <p class="page-desc">调整语音语速、内容推荐策略与社区审核规则</p>
+    </header>
 
-    <div class="section-title">内容推荐策略（F006）</div>
-    <el-card shadow="never" class="config-card">
-      <div class="setting-row">
-        <span>内容推荐</span>
-        <el-switch v-model="config.recommend.content" />
-      </div>
-      <div class="setting-row">
-        <span>结伴学习推荐</span>
-        <el-switch v-model="config.recommend.collab" />
-      </div>
-      <div class="setting-row">
-        <span>AI 模型推荐</span>
-        <el-switch v-model="config.recommend.model" />
-      </div>
-    </el-card>
+    <section class="config-section">
+      <div class="section-title">语音设置（F008）</div>
+      <el-card shadow="never" class="config-card">
+        <div class="setting-row">
+          <span class="setting-name">慢速语速</span>
+          <el-slider v-model="config.speech.slowSpeed" :min="0.5" :max="1.5" :step="0.05" class="setting-control" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">常速语速</span>
+          <el-slider v-model="config.speech.normalSpeed" :min="0.8" :max="2" :step="0.05" class="setting-control" />
+        </div>
+      </el-card>
+    </section>
 
-    <div class="section-title">社区审核</div>
-    <el-card shadow="never" class="config-card">
-      <div class="setting-row">
-        <span>内容自动审核</span>
-        <el-switch v-model="config.audit.content" />
-      </div>
-      <div class="setting-row">
-        <span>人工复核</span>
-        <el-switch v-model="config.audit.manual" />
-      </div>
-    </el-card>
+    <section class="config-section">
+      <div class="section-title">内容推荐策略（F006）</div>
+      <el-card shadow="never" class="config-card">
+        <div class="setting-row">
+          <span class="setting-name">内容推荐</span>
+          <el-switch v-model="config.recommend.content" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">结伴学习推荐</span>
+          <el-switch v-model="config.recommend.collab" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">AI 模型推荐</span>
+          <el-switch v-model="config.recommend.model" />
+        </div>
+      </el-card>
+    </section>
 
-    <el-button type="primary" class="save-btn" :loading="saving" @click="onSave">保存配置</el-button>
+    <section class="config-section">
+      <div class="section-title">社区审核</div>
+      <el-card shadow="never" class="config-card">
+        <div class="setting-row">
+          <span class="setting-name">内容自动审核</span>
+          <el-switch v-model="config.audit.content" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-name">人工复核</span>
+          <el-switch v-model="config.audit.manual" />
+        </div>
+      </el-card>
+    </section>
+
+    <div class="save-bar">
+      <el-button type="primary" class="save-btn" size="large" :loading="saving" @click="onSave">保存配置</el-button>
+    </div>
   </div>
 </template>
 
@@ -85,19 +98,55 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-.section-title {
-  margin-bottom: 12px;
+$ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
+
+.page-head {
+  margin-bottom: 8px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.page-desc {
+  margin: 7px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.config-section .section-title {
+  font-size: 18px;
 }
 
 .config-card {
-  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(31, 42, 68, 0.07);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.35s $ease-apple,
+    box-shadow 0.35s $ease-apple,
+    border-color 0.35s ease;
+
+  &:hover {
+    border-color: rgba(59, 111, 224, 0.22);
+    box-shadow: var(--shadow-md);
+  }
+
+  :deep(.el-card__body) {
+    padding: 8px 24px;
+  }
 }
 
 .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
+  gap: 20px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--border);
 
   &:last-child {
@@ -105,7 +154,79 @@ onMounted(async () => {
   }
 }
 
-.save-btn {
-  width: 100%;
+.setting-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.setting-control {
+  width: 260px;
+  flex-shrink: 0;
+}
+
+.save-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 28px 0 8px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.save-btn.el-button--primary {
+  min-width: 168px;
+  height: 46px;
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: linear-gradient(135deg, #5b8bf0, #3b6fe0 55%, #2f5bb3);
+  box-shadow: 0 10px 24px rgba(59, 111, 224, 0.3);
+  transition:
+    transform 0.35s $ease-apple,
+    box-shadow 0.35s $ease-apple;
+
+  &:hover,
+  &:focus {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #6b98f3, #4478e4 55%, #33619f);
+    box-shadow: 0 16px 34px rgba(59, 111, 224, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.99);
+  }
+}
+
+// ---------------- Element Plus 定制 ----------------
+:deep(.el-switch.is-checked .el-switch__core) {
+  background: linear-gradient(135deg, #5b8bf0, #3b6fe0);
+}
+
+:deep(.el-slider__bar) {
+  background: linear-gradient(90deg, #5b8bf0, #3b6fe0);
+}
+
+:deep(.el-slider__button) {
+  border-color: var(--primary);
+  box-shadow: 0 4px 10px rgba(59, 111, 224, 0.28);
+  transition: transform 0.35s $ease-apple;
+}
+
+:deep(.el-slider__button:hover) {
+  transform: scale(1.14);
+}
+
+@media (max-width: 900px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .setting-control {
+    width: 100%;
+  }
 }
 </style>

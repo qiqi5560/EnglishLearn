@@ -1,6 +1,7 @@
 package com.englishlearn.service;
 
 import com.englishlearn.common.ApiException;
+import com.englishlearn.common.TimeUtil;
 import com.englishlearn.dto.Dtos;
 import com.englishlearn.entity.CommunityComment;
 import com.englishlearn.entity.CommunityPost;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -64,6 +66,7 @@ public class CommunityService {
 
     @Transactional
     public Map<String, Object> createPost(User user, String title, String content, String topic) {
+        ensureNotPunished(user);
         if (title == null || title.isBlank()) {
             throw new ApiException(422, "标题不能为空");
         }
@@ -127,6 +130,7 @@ public class CommunityService {
 
     @Transactional
     public Map<String, Object> addComment(User user, Integer postId, String content) {
+        ensureNotPunished(user);
         if (content == null || content.isBlank()) {
             throw new ApiException(422, "评论内容不能为空");
         }
@@ -160,6 +164,19 @@ public class CommunityService {
 
     private Integer authorId(CommunityPost post) {
         return post.author != null ? post.author.userId : null;
+    }
+
+    /**
+     * 发帖处罚校验：处罚期内禁止发帖与评论（浏览、点赞、学习不受影响）。
+     * 错误提示直接告诉用户解禁时间与原因，避免反复尝试。
+     */
+    private void ensureNotPunished(User user) {
+        if (user.banUntil == null || !user.banUntil.isAfter(LocalDateTime.now())) {
+            return;
+        }
+        String reason = (user.banReason == null || user.banReason.isBlank()) ? "违反社区规范" : user.banReason;
+        throw new ApiException(HttpStatus.FORBIDDEN,
+                "您因「" + reason + "」被限制发帖至 " + user.banUntil.format(TimeUtil.DATETIME) + "，期间无法发帖或评论");
     }
 
     private Set<Integer> likedSet(Integer userId, List<Integer> postIds) {

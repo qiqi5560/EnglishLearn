@@ -24,16 +24,17 @@ springdoc:
   api-docs:
     path: /api-docs
 
-# 业务配置
+# Application config (keep this file ASCII-only: a non-UTF-8 IDE charset corrupts it)
 app:
   jwt:
     secret: dev-secret-change-me-in-production
     expire-minutes: 10080
-  cors-origins: http://localhost:5173,http://127.0.0.1:5173
+  # Allow any port on localhost / 127.0.0.1, so a changing vite dev port never causes CORS 403
+  cors-origins: http://localhost:[*],http://127.0.0.1:[*]
   sms:
     mock-code: "123456"
 
-# LLM 提供方：mock | ollama
+# LLM provider: mock | ollama
 llm:
   provider: ollama
   ollama:
