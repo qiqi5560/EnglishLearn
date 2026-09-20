@@ -52,6 +52,18 @@ public class AuthFacade {
         return user;
     }
 
+    /**
+     * 可选地获取当前登录用户：未登录、token 失效或账号停用时返回 null，不抛异常。
+     * 用于免登录接口（如首页推荐）在登录态下提供个性化结果、未登录时降级为热门。
+     */
+    public User currentUser() {
+        try {
+            return requireUser();
+        } catch (ApiException e) {
+            return null;
+        }
+    }
+
     public User requireAdmin() {
         User user = requireUser();
         if (!"admin".equals(user.userRole)) {

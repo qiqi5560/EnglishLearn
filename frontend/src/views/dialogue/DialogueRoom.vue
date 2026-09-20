@@ -18,7 +18,7 @@
             <DigitalHuman role="AI 陪练" />
           </section>
 
-<<<<<<< HEAD
+          <!-- 实时四维评分（F003） -->
           <section class="rail-card score-card glass-card">
             <div class="rail-title">实时评分</div>
             <div class="score-grid">
@@ -31,23 +31,10 @@
                 :stroke="6"
               />
             </div>
+            <el-tag v-if="sessionStore.evaluating" size="small" type="info" effect="plain" class="eval-tag">
+              评分中…
+            </el-tag>
           </section>
-=======
-    <!-- 实时四维评分（F003） -->
-    <div class="score-area">
-      <ScoreRing
-        v-for="d in dimScores"
-        :key="d.label"
-        :score="d.score"
-        :label="d.label"
-        :size="52"
-        :stroke="5"
-      />
-      <el-tag v-if="sessionStore.evaluating" size="small" type="info" effect="plain" class="eval-tag">
-        评分中…
-      </el-tag>
-    </div>
->>>>>>> f49b35abb4d8abb721b99c4328b673b2b8bd9129
 
           <section class="rail-card scene-card glass-card">
             <div class="rail-title">本场景信息</div>

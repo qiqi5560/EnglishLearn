@@ -9,6 +9,7 @@ import com.englishlearn.entity.ConversationSession;
 import com.englishlearn.entity.DailyTask;
 import com.englishlearn.entity.LearningPlan;
 import com.englishlearn.entity.LearningResource;
+import com.englishlearn.entity.PostLike;
 import com.englishlearn.entity.QuoteMaterial;
 import com.englishlearn.entity.Scene;
 import com.englishlearn.entity.StudyRecord;
@@ -22,6 +23,7 @@ import com.englishlearn.repository.ConversationSessionRepository;
 import com.englishlearn.repository.DailyTaskRepository;
 import com.englishlearn.repository.LearningPlanRepository;
 import com.englishlearn.repository.LearningResourceRepository;
+import com.englishlearn.repository.PostLikeRepository;
 import com.englishlearn.repository.QuoteMaterialRepository;
 import com.englishlearn.repository.SceneRepository;
 import com.englishlearn.repository.StudyRecordRepository;
@@ -64,6 +66,7 @@ public class DataSeeder implements CommandLineRunner {
     private final StudyRecordRepository studyRecordRepository;
     private final SysConfigRepository configRepository;
     private final QuoteMaterialRepository quoteRepository;
+    private final PostLikeRepository postLikeRepository;
     private final BCryptPasswordEncoder encoder;
 
     public DataSeeder(PlatformTransactionManager txManager,
@@ -80,6 +83,7 @@ public class DataSeeder implements CommandLineRunner {
                       StudyRecordRepository studyRecordRepository,
                       SysConfigRepository configRepository,
                       QuoteMaterialRepository quoteRepository,
+                      PostLikeRepository postLikeRepository,
                       BCryptPasswordEncoder encoder) {
         this.tx = new TransactionTemplate(txManager);
         this.userRepository = userRepository;
@@ -95,6 +99,7 @@ public class DataSeeder implements CommandLineRunner {
         this.studyRecordRepository = studyRecordRepository;
         this.configRepository = configRepository;
         this.quoteRepository = quoteRepository;
+        this.postLikeRepository = postLikeRepository;
         this.encoder = encoder;
     }
 
@@ -245,6 +250,8 @@ public class DataSeeder implements CommandLineRunner {
         List<LearningResource> resources = seedResources();
         seedPosts(users);
         seedPlansAndLearning(users, scenes, resources);
+        seedTrainingAndBehavior(users, scenes, resources);
+        seedLikes(users);
         seedConfigs();
         log.info("seed: 演示数据初始化完成");
     }
@@ -435,6 +442,171 @@ public class DataSeeder implements CommandLineRunner {
             task.taskDate = today;
             taskRepository.save(task);
         }
+    }
+
+    /**
+     * 扩种模型训练与行为数据。
+     *
+     * <p>为三名学员各播 10 次练习会话（每次 3 条评测记录）+ 1 次跳出会话，分数分别落在
+     * A2 / B1 / B2 三档并体现进步趋势，保证水平预测模型三档样本齐全（≥30 条）；
+     * 同时补齐历史每日任务（含完成状态）与学习记录，让四项运营指标有真实数据可算。
+     */
+    private void seedTrainingAndBehavior(Map<String, User> users, Map<String, Scene> scenes,
+                                         List<LearningResource> resources) {
+        LocalDate today = LocalDate.now();
+        String[] phones = {"13800138000", "13700000000", "13600000000"};
+        double[][] scoreSeq = {
+                {46, 49, 52, 54, 57, 60, 62, 64, 67, 70},   // Momo：A2 起步，逐步进入中级
+                {58, 60, 63, 65, 66, 68, 70, 72, 73, 75},   // Leo：B1 稳定提升
+                {72, 74, 76, 78, 80, 82, 84, 86, 88, 90}};  // Cici：B2 起步，进入高级
+        String[][] sceneSeq = {
+                {"餐厅点餐", "机场值机", "酒店入住", "餐厅点餐", "课堂讨论", "餐厅点餐", "酒店入住", "课堂讨论", "机场值机", "餐厅点餐"},
+                {"商务会议", "面试问答", "商务会议", "课堂讨论", "商务会议", "面试问答", "商务会议", "课堂讨论", "面试问答", "商务会议"},
+                {"面试问答", "课堂讨论", "商务会议", "面试问答", "课堂讨论", "商务会议", "面试问答", "课堂讨论", "商务会议", "面试问答"}};
+
+        Map<Integer, String> sceneNames = new LinkedHashMap<>();
+        scenes.forEach((name, scene) -> sceneNames.put(scene.sceneId, name));
+        List<Integer> sceneIds = new java.util.ArrayList<>(sceneNames.keySet());
+
+        int sampleCount = 0;
+        for (int u = 0; u < phones.length; u++) {
+            User user = users.get(phones[u]);
+            if (user == null) {
+                continue;
+            }
+            LearningPlan plan = planRepository.findByUserIdAndPlanStatus(user.userId, "active").orElse(null);
+            for (int i = 0; i < scoreSeq[u].length; i++) {
+                int daysAgo = 10 - i;
+                LocalDate date = today.minusDays(daysAgo);
+                Scene scene = scenes.get(sceneSeq[u][i]);
+                seedTrainingSession(user, scene, date.atTime(20, 30), 300 + (i % 5) * 60, 3, dimsOf(scoreSeq[u][i]));
+                sampleCount++;
+
+                // 学习记录：每 5 天休息一天，让「未点击」的任务也有样本
+                if (daysAgo % 5 != 0) {
+                    StudyRecord record = new StudyRecord();
+                    record.userId = user.userId;
+                    record.actionType = "scenario";
+                    record.durationMin = 10 + (i % 4) * 2;
+                    record.score = scoreSeq[u][i];
+                    record.learnDate = date;
+                    studyRecordRepository.save(record);
+                }
+
+                // 历史每日任务：多数绑定当天练过的场景（判定为已点击），
+                // 每 4 天有一次绑定到其他场景，模拟「推荐了但没点开」
+                int otherIndex = (sceneIds.indexOf(scene.sceneId) + 1) % sceneIds.size();
+                Integer bindScene = daysAgo % 4 == 0 ? sceneIds.get(otherIndex) : scene.sceneId;
+                saveTask(user, plan, date, "场景对话",
+                        sceneNames.getOrDefault(bindScene, "自由对话") + " · 12 分钟",
+                        12, bindScene, null, daysAgo % 3 != 0 ? 1 : 0);
+
+                LearningResource resource = resources.get((u + i) % resources.size());
+                saveTask(user, plan, date, "跟读", resource.title, 12, null, resource.resourceId,
+                        daysAgo % 2 == 0 ? 1 : 0);
+                saveTask(user, plan, date, "单词", "高频词汇复习 20 个", 8, null, null,
+                        daysAgo % 4 != 0 ? 1 : 0);
+            }
+            // 每人 1 次跳出会话：进入场景后未开口，且停留时间极短
+            seedTrainingSession(user, scenes.get(sceneSeq[u][0]), today.minusDays(4).atTime(21, 5),
+                    18, 0, dimsOf(scoreSeq[u][0]));
+        }
+        log.info("seed: 模型训练样本 {} 条会话，另有 {} 次跳出会话", sampleCount, phones.length);
+    }
+
+    /** 社区点赞：让互动率指标有真实数据 */
+    private void seedLikes(Map<String, User> users) {
+        String[] likers = {"13800138000", "13700000000", "13600000000"};
+        for (CommunityPost post : postRepository.findAll()) {
+            for (String phone : likers) {
+                User liker = users.get(phone);
+                if (liker == null || (post.author != null && liker.userId.equals(post.author.userId))) {
+                    continue;
+                }
+                PostLike like = new PostLike();
+                like.postId = post.postId;
+                like.userId = liker.userId;
+                postLikeRepository.save(like);
+            }
+        }
+    }
+
+    /** 生成一条会话：可指定时长与用户发言数（0 表示未开口），每次发言对应一条评测记录 */
+    private ConversationSession seedTrainingSession(User user, Scene scene, LocalDateTime endDt,
+                                                    int durationSec, int userMsgCount, double[][] dimsList) {
+        ConversationSession session = new ConversationSession();
+        session.userId = user.userId;
+        session.scene = scene;
+        session.mode = "scenario";
+        session.startTime = endDt.minusSeconds(durationSec);
+        session.endTime = endDt;
+        session.durationSec = durationSec;
+        session.sessionStatus = "finished";
+        session = sessionRepository.save(session);
+
+        ConversationMessage ai = new ConversationMessage();
+        ai.sessionId = session.sessionId;
+        ai.speaker = "ai";
+        ai.contentEn = "Welcome! Let's practice this scenario together.";
+        ai.contentZh = "欢迎！我们一起练习这个场景。";
+        ai.msgTime = endDt.minusSeconds(durationSec);
+        messageRepository.save(ai);
+
+        for (int i = 0; i < userMsgCount; i++) {
+            double[] dims = dimsList[Math.min(i, dimsList.length - 1)];
+            ConversationMessage message = new ConversationMessage();
+            message.sessionId = session.sessionId;
+            message.speaker = "user";
+            message.contentEn = "Sure, I'd like to keep practising this part step by step.";
+            message.contentZh = "好的，我想继续逐步练习这部分内容。";
+            message.msgTime = endDt.minusSeconds(durationSec).plusMinutes(i + 1L);
+            messageRepository.save(message);
+
+            AssessmentRecord assessment = new AssessmentRecord();
+            assessment.sessionId = session.sessionId;
+            assessment.pronScore = dims[0];
+            assessment.fluencyScore = dims[1];
+            assessment.reactionScore = dims[2];
+            assessment.naturalScore = dims[3];
+            assessment.grammarFeedback = "表达结构清晰，可继续打磨连读与弱读。";
+            assessment.phonemeIssues = JsonUtil.toJson(List.of());
+            assessment.assessTime = message.msgTime;
+            assessmentRepository.save(assessment);
+        }
+        return session;
+    }
+
+    /** 由综合分反推四维分（3 次评测，围绕综合分小幅波动） */
+    private static double[][] dimsOf(double total) {
+        double[][] dims = new double[3][];
+        for (int k = 0; k < dims.length; k++) {
+            double base = total + (k - 1) * 2.0;
+            dims[k] = new double[]{
+                    clampScore(base + 2),
+                    clampScore(base - 4),
+                    clampScore(base - 1),
+                    clampScore(base - 6)};
+        }
+        return dims;
+    }
+
+    private static double clampScore(double value) {
+        return Math.max(20, Math.min(99, value));
+    }
+
+    private void saveTask(User user, LearningPlan plan, LocalDate date, String type, String title,
+                          int minutes, Integer sceneId, Integer resourceId, int done) {
+        DailyTask task = new DailyTask();
+        task.userId = user.userId;
+        task.planId = plan != null ? plan.planId : null;
+        task.taskType = type;
+        task.title = title;
+        task.durationMin = minutes;
+        task.sceneId = sceneId;
+        task.resourceId = resourceId;
+        task.done = done;
+        task.taskDate = date;
+        taskRepository.save(task);
     }
 
     private void seedFinishedSession(User user, Scene scene, LocalDateTime endDt, double total, double[] dims) {

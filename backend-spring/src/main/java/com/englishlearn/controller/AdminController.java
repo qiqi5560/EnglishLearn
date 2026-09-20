@@ -7,6 +7,8 @@ import com.englishlearn.security.AuthFacade;
 import com.englishlearn.service.AdminInsightService;
 import com.englishlearn.service.AdminService;
 import com.englishlearn.service.AuditLogService;
+import com.englishlearn.service.LevelPredictService;
+import com.englishlearn.service.MetricService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,15 +33,21 @@ public class AdminController {
     private final AdminInsightService insightService;
     private final AuditLogService auditLog;
     private final AuthFacade authFacade;
+    private final LevelPredictService levelPredictService;
+    private final MetricService metricService;
 
     public AdminController(AdminService adminService,
                            AdminInsightService insightService,
                            AuditLogService auditLog,
-                           AuthFacade authFacade) {
+                           AuthFacade authFacade,
+                           LevelPredictService levelPredictService,
+                           MetricService metricService) {
         this.adminService = adminService;
         this.insightService = insightService;
         this.auditLog = auditLog;
         this.authFacade = authFacade;
+        this.levelPredictService = levelPredictService;
+        this.metricService = metricService;
     }
 
     // ============================================================
@@ -95,6 +103,36 @@ public class AdminController {
         data.put("modules", auditLog.moduleStats());
         data.put("list", auditLog.list(module, capped));
         return ApiResponse.ok(data);
+    }
+
+    // ============================================================
+    // 机器学习：口语水平预测模型
+    // ============================================================
+
+    /** 模型状态：是否已训练、样本数、验证集准确率 */
+    @GetMapping("/ml/status")
+    public ApiResponse mlStatus() {
+        authFacade.requireAdmin();
+        return ApiResponse.ok(levelPredictService.modelStatus());
+    }
+
+    /**
+     * 触发模型训练：以「有评测记录的会话」为样本，标签由综合评分分箱自动生成。
+     * 样本不足或档位不全时返回 trained=false 与原因，不覆盖已有模型。
+     */
+    @PostMapping("/ml/train")
+    public ApiResponse mlTrain() {
+        authFacade.requireAdmin();
+        return ApiResponse.ok(levelPredictService.train());
+    }
+
+    /**
+     * 推荐效果指标：点击率、完成率、互动率、跳出率（含按天趋势、样本量检测与口径定义）。
+     */
+    @GetMapping("/metrics")
+    public ApiResponse metrics(@RequestParam(defaultValue = "14") int days) {
+        authFacade.requireAdmin();
+        return ApiResponse.ok(metricService.metrics(days));
     }
 
     // ============================================================

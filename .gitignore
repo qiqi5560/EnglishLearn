@@ -18,3 +18,5 @@ data/
 *.log
 # 环境变量
 .env
+# AI 助手本地工程数据
+.codebuddy/

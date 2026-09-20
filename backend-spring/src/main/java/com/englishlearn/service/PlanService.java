@@ -6,12 +6,14 @@ import com.englishlearn.dto.Dtos;
 import com.englishlearn.dto.PlanDtos;
 import com.englishlearn.entity.DailyTask;
 import com.englishlearn.entity.LearningPlan;
+import com.englishlearn.entity.LearningResource;
 import com.englishlearn.entity.Scene;
 import com.englishlearn.entity.User;
 import com.englishlearn.llm.EvalResult;
 import com.englishlearn.llm.LevelJudgement;
 import com.englishlearn.llm.LlmProvider;
 import com.englishlearn.repository.DailyTaskRepository;
+import com.englishlearn.service.LevelPredictService.LevelPrediction;
 import com.englishlearn.repository.LearningPlanRepository;
 import com.englishlearn.repository.LearningResourceRepository;
 import com.englishlearn.repository.SceneRepository;
@@ -64,17 +66,23 @@ public class PlanService {
     private final SceneRepository sceneRepository;
     private final LearningResourceRepository resourceRepository;
     private final LlmProvider llmProvider;
+    private final RecommendService recommendService;
+    private final LevelPredictService levelPredictService;
 
     public PlanService(LearningPlanRepository planRepository,
                        DailyTaskRepository taskRepository,
                        SceneRepository sceneRepository,
                        LearningResourceRepository resourceRepository,
-                       LlmProvider llmProvider) {
+                       LlmProvider llmProvider,
+                       RecommendService recommendService,
+                       LevelPredictService levelPredictService) {
         this.planRepository = planRepository;
         this.taskRepository = taskRepository;
         this.sceneRepository = sceneRepository;
         this.resourceRepository = resourceRepository;
         this.llmProvider = llmProvider;
+        this.recommendService = recommendService;
+        this.levelPredictService = levelPredictService;
     }
 
     public LearningPlan getActivePlan(User user) {
@@ -249,9 +257,21 @@ public class PlanService {
         return plan;
     }
 
+    /**
+     * 按目标模板生成当日任务。场景与素材优先取个性化推荐结果（按预测水平匹配难度），
+     * 推荐结果不足时回退到模板的固定绑定；练习时长按预测水平档位自适应。
+     */
     private List<DailyTask> buildTasksForDate(User user, LearningPlan plan, LocalDate targetDate) {
         String goal = TASK_TEMPLATES.containsKey(plan.targetGoal) ? plan.targetGoal : "兴趣";
         List<TaskTemplate> templates = TASK_TEMPLATES.get(goal);
+
+        LevelPrediction prediction = levelPredictService.predict(user);
+        int minutes = RecommendService.minutesFor(prediction.band());
+        List<Scene> suggestedScenes = recommendService.topScenes(user, prediction, templates.size());
+        List<LearningResource> suggestedResources = recommendService.topResources(user, prediction, templates.size());
+        int sceneCursor = 0;
+        int resourceCursor = 0;
+
         List<DailyTask> created = new ArrayList<>();
         for (TaskTemplate t : templates) {
             if (taskRepository.existsByUserIdAndTaskDateAndTitle(user.userId, targetDate, t.title())) {
@@ -259,20 +279,38 @@ public class PlanService {
             }
             Integer sceneId = null;
             Integer resourceId = null;
+            String title = t.title();
+            int durationMin = t.minutes();
+
             if (t.bind() != null && t.bind().containsKey("scene")) {
-                sceneId = sceneRepository.findFirstBySceneNameAndStatus(t.bind().get("scene"), 1)
-                        .map(s -> s.sceneId).orElse(null);
+                if (sceneCursor < suggestedScenes.size()) {
+                    Scene scene = suggestedScenes.get(sceneCursor++);
+                    sceneId = scene.sceneId;
+                    title = scene.sceneName + " · " + minutes + " 分钟";
+                    durationMin = minutes;
+                } else {
+                    sceneId = sceneRepository.findFirstBySceneNameAndStatus(t.bind().get("scene"), 1)
+                            .map(s -> s.sceneId).orElse(null);
+                }
             }
             if (t.bind() != null && t.bind().containsKey("resource")) {
-                resourceId = resourceRepository.findFirstByTitleContainingAndStatus(t.bind().get("resource"), 1)
-                        .map(r -> r.resourceId).orElse(null);
+                if (resourceCursor < suggestedResources.size()) {
+                    LearningResource resource = suggestedResources.get(resourceCursor++);
+                    resourceId = resource.resourceId;
+                    title = resource.title;
+                    durationMin = minutes;
+                } else {
+                    resourceId = resourceRepository.findFirstByTitleContainingAndStatus(t.bind().get("resource"), 1)
+                            .map(r -> r.resourceId).orElse(null);
+                }
             }
+
             DailyTask task = new DailyTask();
             task.userId = user.userId;
             task.planId = plan.planId;
             task.taskType = t.type();
-            task.title = t.title();
-            task.durationMin = t.minutes();
+            task.title = title;
+            task.durationMin = durationMin;
             task.sceneId = sceneId;
             task.resourceId = resourceId;
             task.done = 0;

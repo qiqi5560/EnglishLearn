@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface LearningResourceRepository extends JpaRepository<LearningResource, Integer> {
@@ -30,4 +31,7 @@ public interface LearningResourceRepository extends JpaRepository<LearningResour
     Page<LearningResource> adminSearch(@Param("keyword") String keyword, Pageable pageable);
 
     long countByStatus(Integer status);
+
+    /** 上架资源（个性化推荐候选集） */
+    List<LearningResource> findByStatusOrderByResourceId(Integer status);
 }

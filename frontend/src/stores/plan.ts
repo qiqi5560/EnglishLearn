@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import * as planApi from '@/api/modules/plan'
+import { track } from '@/composables/useTracker'
 import type { DailyTaskDto, EntranceTestResult, PlanDto } from '@/types/api'
 
 export const usePlanStore = defineStore('plan', () => {
@@ -65,6 +66,8 @@ export const usePlanStore = defineStore('plan', () => {
   async function toggleTask(taskId: number, done: boolean) {
     const prev = dailyTasks.value.find((t) => t.taskId === taskId)
     if (prev) prev.done = done
+    // 埋点钩子：任务完成行为，一期仅留痕，二期上报后用于真实完成率
+    track(done ? 'finish' : 'unfinish', { taskId, taskType: prev?.type ?? null })
     try {
       const updated = await planApi.toggleTask(taskId, done)
       const cur = dailyTasks.value.find((t) => t.taskId === taskId)

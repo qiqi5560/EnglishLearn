@@ -45,6 +45,11 @@ public class MeteredLlmProvider implements LlmProvider {
     }
 
     @Override
+    public LevelJudgement judgeLevel(List<String> answers) {
+        return metrics.measure("judgeLevel", providerName(), () -> delegate.judgeLevel(answers));
+    }
+
+    @Override
     public SummaryResult summarize(List<ConversationMessage> messages, List<EvalResult> evaluations) {
         return metrics.measure("summarize", providerName(), () -> delegate.summarize(messages, evaluations));
     }

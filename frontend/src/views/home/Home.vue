@@ -157,31 +157,95 @@
               <el-button text type="primary" @click="$router.push('/practice')">全部</el-button>
             </div>
 
-            <div v-if="scenes.length" class="scene-grid">
-              <article
-                v-for="(scene, index) in scenes"
-                :key="scene.id"
-                class="scene-tile"
-                :class="`tone-${index % 4}`"
-                role="button"
-                tabindex="0"
-                @click="$router.push(`/scene/${scene.id}`)"
-                @keydown.enter="$router.push(`/scene/${scene.id}`)"
-              >
-                <div class="scene-topline">
-                  <span>{{ scene.category }}</span>
-                  <LevelTag :level="scene.level" />
+            <!-- AI 口语水平预测 -->
+            <div v-if="levelPrediction" class="predict-card" aria-label="AI 预测口语水平">
+              <span class="predict-level">{{ levelPrediction.level }}</span>
+              <div class="predict-main">
+                <p class="predict-title">AI 预测水平 · {{ levelPrediction.band }}</p>
+                <div class="predict-bar" role="img" :aria-label="`置信度 ${levelPrediction.confidence}%`">
+                  <i :style="{ width: `${Math.min(100, levelPrediction.confidence)}%` }"></i>
                 </div>
-                <div class="scene-symbol" aria-hidden="true">{{ scene.name.slice(0, 1) }}</div>
-                <div class="scene-name">{{ scene.name }}</div>
-                <div class="scene-desc text-muted">{{ scene.desc }}</div>
-                <div class="scene-footer">
-                  <span>{{ scene.role || 'AI 搭档' }}</span>
-                  <el-icon><ArrowUpRight /></el-icon>
-                </div>
-              </article>
+                <p class="predict-meta text-muted">
+                  置信度 {{ levelPrediction.confidence }}% · 基于近 {{ levelPrediction.sampleCount }} 次练习 ·
+                  {{ levelPrediction.source === 'model' ? '模型预测' : '规则估算' }}
+                </p>
+              </div>
             </div>
-            <div v-else-if="!loading" class="recommend-empty text-muted">暂时没有推荐场景</div>
+
+            <el-tabs v-model="recommendTab" class="recommend-tabs">
+              <el-tab-pane label="场景" name="scene">
+                <div v-if="scenes.length" class="scene-grid">
+                  <article
+                    v-for="(scene, index) in scenes"
+                    :key="scene.id"
+                    class="scene-tile"
+                    :class="`tone-${index % 4}`"
+                    role="button"
+                    tabindex="0"
+                    @click="goScene(scene)"
+                    @keydown.enter="goScene(scene)"
+                  >
+                    <div class="scene-topline">
+                      <span>{{ scene.category }}</span>
+                      <LevelTag :level="scene.level" />
+                    </div>
+                    <div class="scene-symbol" aria-hidden="true">{{ scene.name.slice(0, 1) }}</div>
+                    <div class="scene-name">{{ scene.name }}</div>
+                    <div class="scene-desc text-muted">{{ scene.desc }}</div>
+                    <div class="scene-footer">
+                      <span>{{ scene.role || 'AI 搭档' }}</span>
+                      <span v-if="scene.reason" class="reason-tag">{{ scene.reason }}</span>
+                      <el-icon><ArrowUpRight /></el-icon>
+                    </div>
+                  </article>
+                </div>
+                <div v-else-if="!loading" class="recommend-empty text-muted">暂时没有推荐场景</div>
+              </el-tab-pane>
+
+              <el-tab-pane label="素材" name="resource">
+                <div v-if="resources.length" class="rec-grid">
+                  <article
+                    v-for="(res, index) in resources"
+                    :key="res.id"
+                    class="rec-card"
+                    :class="`tone-${index % 4}`"
+                    role="button"
+                    tabindex="0"
+                    @click="goResource(res)"
+                    @keydown.enter="goResource(res)"
+                  >
+                    <div class="scene-topline">
+                      <span>{{ res.category }}</span>
+                      <LevelTag :level="res.level" />
+                    </div>
+                    <div class="scene-name">{{ res.title }}</div>
+                    <div class="scene-desc text-muted">{{ res.type }} · {{ Math.round((res.durationSec ?? 0) / 60) }} 分钟</div>
+                    <div class="scene-footer">
+                      <span v-if="res.reason" class="reason-tag">{{ res.reason }}</span>
+                      <el-icon><ArrowUpRight /></el-icon>
+                    </div>
+                  </article>
+                </div>
+                <div v-else-if="!loading" class="recommend-empty text-muted">暂时没有推荐素材</div>
+              </el-tab-pane>
+
+              <el-tab-pane label="任务" name="task">
+                <div v-if="tasks.length" class="rec-list">
+                  <div v-for="(task, index) in tasks" :key="`${task.type}-${index}`" class="rec-row">
+                    <span class="rec-dot" :class="`tone-${index % 4}`" aria-hidden="true"></span>
+                    <div class="rec-row-main">
+                      <p class="rec-title">{{ task.title }}</p>
+                      <p class="scene-desc text-muted">
+                        {{ task.type }} · {{ task.durationMin }} 分钟
+                        <span v-if="task.reason" class="reason-tag">{{ task.reason }}</span>
+                      </p>
+                    </div>
+                    <button class="rec-action" type="button" @click="onRecommendTask(task)">开始</button>
+                  </div>
+                </div>
+                <div v-else-if="!loading" class="recommend-empty text-muted">暂时没有推荐任务</div>
+              </el-tab-pane>
+            </el-tabs>
           </section>
         </aside>
       </div>
@@ -272,10 +336,23 @@ import LevelTag from '@/components/business/LevelTag.vue'
 import { useUserStore } from '@/stores/user'
 import { usePlanStore } from '@/stores/plan'
 import { useTaskJump } from '@/composables/useTaskJump'
+import { track } from '@/composables/useTracker'
 import { recommendedScenes } from '@/api/modules/scene'
-import type { DailyTaskDto, SceneDto } from '@/types/api'
+import { recommendOverview } from '@/api/modules/recommend'
+import type {
+  DailyTaskDto,
+  LevelPrediction,
+  RecommendResourceItem,
+  RecommendSceneItem,
+  RecommendTaskItem,
+} from '@/types/api'
 
-const router = useRouter(); const userStore = useUserStore(); const planStore = usePlanStore(); const { startTask } = useTaskJump(); const loading = ref(false); const scenes = ref<SceneDto[]>([])
+const router = useRouter(); const userStore = useUserStore(); const planStore = usePlanStore(); const { startTask } = useTaskJump(); const loading = ref(false)
+const scenes = ref<RecommendSceneItem[]>([])
+const resources = ref<RecommendResourceItem[]>([])
+const tasks = ref<RecommendTaskItem[]>([])
+const levelPrediction = ref<LevelPrediction | null>(null)
+const recommendTab = ref<'scene' | 'resource' | 'task'>('scene')
 const currentLevel = computed(() => planStore.level ?? userStore.level ?? null)
 const totalTasks = computed(() => planStore.dailyTasks.length)
 const doneCount = computed(() => planStore.dailyTasks.filter((task) => task.done).length)
@@ -366,7 +443,53 @@ async function onStartTask(task: DailyTaskDto) { try { await startTask(task) } c
 /** 点击台词卡片：带着片名进入名句跟读，自动定位到对应名句 */
 function jumpToQuote(film: string) { router.push({ path: '/quotes', query: { film } }) }
 function onPrimaryAction() { if (nextTask.value) return onStartTask(nextTask.value); return router.push('/entrance-test') }
-onMounted(async () => { loading.value = true; try { const [sceneRes] = await Promise.all([recommendedScenes(4), planStore.loadTodayTasks().catch(() => null), userStore.fetchMe().catch(() => null)]); scenes.value = sceneRes ?? [] } finally { loading.value = false } })
+/** 推荐项点击：一期仅留埋点钩子，二期上报真实曝光 / 点击事件 */
+function goScene(scene: RecommendSceneItem) {
+  track('click', { target: 'scene', sceneId: scene.id })
+  router.push(`/scene/${scene.id}`)
+}
+function goResource(resource: RecommendResourceItem) {
+  track('click', { target: 'resource', resourceId: resource.id })
+  router.push(`/resource/${resource.id}/read`)
+}
+async function onRecommendTask(task: RecommendTaskItem) {
+  track('click', { target: 'task', type: task.type, sceneId: task.sceneId, resourceId: task.resourceId })
+  try {
+    await startTask({
+      taskId: 0,
+      type: task.type,
+      title: task.title,
+      durationMin: task.durationMin,
+      sceneId: task.sceneId,
+      resourceId: task.resourceId,
+      done: false,
+      taskDate: '',
+    } as unknown as DailyTaskDto)
+  } catch { /* 请求层负责提示 */ }
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      planStore.loadTodayTasks().catch(() => null),
+      userStore.fetchMe().catch(() => null),
+    ])
+    // 已登录走个性化推荐；未登录或接口异常时降级为热门场景
+    try {
+      const overview = await recommendOverview(4)
+      levelPrediction.value = overview?.level ?? null
+      scenes.value = overview?.scenes ?? []
+      resources.value = overview?.resources ?? []
+      tasks.value = overview?.tasks ?? []
+    } catch {
+      levelPrediction.value = null
+      scenes.value = await recommendedScenes(4).catch(() => [])
+    }
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <style scoped lang="scss">
@@ -984,6 +1107,161 @@ h3 {
   padding: 28px 0;
   text-align: center;
   font-size: 13px;
+}
+
+// ------------------------------------------------------------
+// AI 水平预测卡与推荐素材 / 任务
+// ------------------------------------------------------------
+.predict-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(59, 111, 224, 0.1), rgba(91, 139, 240, 0.04));
+  border: 1px solid rgba(59, 111, 224, 0.16);
+}
+
+.predict-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b6fe0, #5b8bf0);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(59, 111, 224, 0.28);
+}
+
+.predict-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.predict-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.predict-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(59, 111, 224, 0.14);
+}
+
+.predict-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b6fe0, #5b8bf0);
+  transition: width 0.6s var(--ease-apple, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.predict-meta {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.reason-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(34, 160, 107, 0.12);
+  color: #22a06b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rec-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(59, 111, 224, 0.08), rgba(91, 139, 240, 0.03));
+  border: 1px solid rgba(31, 42, 68, 0.06);
+  cursor: pointer;
+  transition: transform 0.28s var(--ease-apple, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow 0.28s ease;
+}
+
+.rec-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(31, 42, 68, 0.1);
+}
+
+.rec-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rec-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(31, 42, 68, 0.06);
+  transition: transform 0.24s var(--ease-apple, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow 0.24s ease;
+}
+
+.rec-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(31, 42, 68, 0.08);
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b6fe0, #5b8bf0);
+}
+
+.rec-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rec-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rec-action {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #3b6fe0, #5b8bf0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-apple, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.rec-action:hover {
+  transform: translateY(-1px);
+}
+
+.rec-action:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 900px) {
+  .rec-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 // ------------------------------------------------------------

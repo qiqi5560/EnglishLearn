@@ -57,6 +57,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'dashboard', name: 'AdminDashboard', component: () => import('@/views/admin/AdminDashboard.vue'), meta: { title: '数据看板' } },
       { path: 'usage', name: 'AdminUsageReport', component: () => import('@/views/admin/UsageReport.vue'), meta: { title: '用户使用报表' } },
       { path: 'activity', name: 'AdminActivity', component: () => import('@/views/admin/ActivityStats.vue'), meta: { title: '日活动量' } },
+      { path: 'metrics', name: 'AdminMetrics', component: () => import('@/views/admin/MetricsBoard.vue'), meta: { title: '推荐效果指标' } },
       { path: 'compute', name: 'AdminCompute', component: () => import('@/views/admin/ComputeMonitor.vue'), meta: { title: '算力监控' } },
       { path: 'system', name: 'AdminSystem', component: () => import('@/views/admin/SystemOverview.vue'), meta: { title: '系统概览' } },
       { path: 'quotes', name: 'AdminQuotes', component: () => import('@/views/admin/QuoteManage.vue'), meta: { title: '名句素材' } },

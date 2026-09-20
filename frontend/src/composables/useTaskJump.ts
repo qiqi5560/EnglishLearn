@@ -1,6 +1,7 @@
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useSessionStore } from '@/stores/session'
+import { track } from '@/composables/useTracker'
 import type { DailyTaskDto } from '@/types/api'
 
 /** 任务类型 → 兜底跳转的练习页标签页 */
@@ -42,6 +43,8 @@ export function useTaskJump() {
   }
 
   function startTask(task: DailyTaskDto) {
+    // 埋点钩子：任务点击进入行为，一期仅留痕，二期上报后用于真实点击率
+    track('click', { taskId: task.taskId, taskType: task.type, sceneId: task.sceneId ?? null, resourceId: task.resourceId ?? null })
     switch (task.type) {
       case '场景对话':
         return startSceneTask(task)

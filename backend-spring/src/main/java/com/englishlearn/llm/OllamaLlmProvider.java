@@ -229,7 +229,7 @@ public class OllamaLlmProvider implements LlmProvider {
             String prompt = "Translate the following English passage into fluent, natural Chinese.\n"
                     + "Respond ONLY with the Chinese translation, no extra text.\n\n"
                     + "Passage: " + t;
-            String content = chat(prompt, false);
+            String content = chat(prompt, false, 300);
             out.add(content != null && !content.isBlank() ? content.trim() : fallback.gloss(t));
         }
         return out;
@@ -244,7 +244,7 @@ public class OllamaLlmProvider implements LlmProvider {
                 + "Learner spoke: " + spoken + "\n"
                 + "Respond ONLY with JSON: {\"pron\":0,\"fluency\":0,\"reaction\":0,\"natural\":0,"
                 + "\"grammarFeedback\":\"\",\"phonemeIssues\":[{\"word\":\"\",\"phoneme\":\"\",\"note\":\"\"}]}";
-        String content = chat(prompt, true);
+        String content = chat(prompt, true, 300);
         if (content != null) {
             JsonNode node = parseJson(content);
             if (node != null) {

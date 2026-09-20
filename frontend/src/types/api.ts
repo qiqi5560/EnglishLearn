@@ -274,6 +274,126 @@ export interface SystemConfig {
   audit: { content: boolean; manual: boolean }
 }
 
+/** ==================== 口语水平预测与个性化推荐 ==================== */
+
+/** 水平预测结果：档位、CEFR 等级、各档概率、置信度 */
+export interface LevelPrediction {
+  band: string
+  level: string
+  score: number
+  confidence: number
+  probs: number[]
+  bands: string[]
+  source: string
+  sampleCount: number
+  features: Record<string, unknown>
+}
+
+/** 推荐项附加的解释信息 */
+export interface RecommendReason {
+  reason?: string
+  match?: number
+  strategies?: { content: number; collab: number; model: number }
+}
+
+export type RecommendSceneItem = SceneDto & RecommendReason
+
+export type RecommendResourceItem = ResourceDto & RecommendReason
+
+export interface RecommendTaskItem extends RecommendReason {
+  type: string
+  title: string
+  durationMin: number
+  sceneId: number | null
+  resourceId: number | null
+  score: number
+}
+
+export interface RecommendStrategies {
+  content: boolean
+  collab: boolean
+  model: boolean
+}
+
+export interface RecommendOverview {
+  level: LevelPrediction
+  scenes: RecommendSceneItem[]
+  resources: RecommendResourceItem[]
+  tasks: RecommendTaskItem[]
+  strategies: RecommendStrategies
+}
+
+export interface ModelStatus {
+  ready: boolean
+  source: string
+  bands: string[]
+  minSamples: number
+  trainedAt?: string | null
+  sampleCount?: number | null
+  accuracy?: number | null
+  trainCount?: number | null
+  testCount?: number | null
+  featureNames?: string[] | null
+}
+
+export interface TrainResult {
+  trained: boolean
+  reason?: string
+  sampleCount: number
+  distribution?: Record<string, number>
+  accuracy?: number
+  trainCount?: number
+  testCount?: number
+  trainedAt?: string
+}
+
+/** 指标口径定义 */
+export interface MetricDefinition {
+  key: string
+  name: string
+  formula: string
+  source: string
+}
+
+export interface MetricTrend {
+  dates: string[]
+  ctr: (number | null)[]
+  completionRate: (number | null)[]
+  interactionRate: (number | null)[]
+  bounceRate: (number | null)[]
+}
+
+export interface AdminMetrics {
+  days: number
+  summary: {
+    ctr: number | null
+    completionRate: number | null
+    interactionRate: number | null
+    bounceRate: number | null
+  }
+  detail: {
+    tasks: number
+    clickedTasks: number
+    doneTasks: number
+    sessions: number
+    bouncedSessions: number
+    activeUsers: number
+    interactingUsers: number
+  }
+  sample: {
+    tasks: number
+    sessions: number
+    activeUsers: number
+    interactions: number
+    insufficient: boolean
+    minDenominator: number
+  }
+  trend: MetricTrend
+  definitions: MetricDefinition[]
+  stage: string
+  stageNote: string
+}
+
 /** ==================== 管理后台：运营洞察 ==================== */
 
 /** 用户使用报表 */

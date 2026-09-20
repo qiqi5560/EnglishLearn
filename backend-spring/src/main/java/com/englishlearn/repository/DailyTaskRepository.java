@@ -16,4 +16,7 @@ public interface DailyTaskRepository extends JpaRepository<DailyTask, Integer> {
     Optional<DailyTask> findByUserIdAndTaskDateAndSceneId(Integer userId, LocalDate taskDate, Integer sceneId);
 
     long countByUserIdAndTaskDateAndTaskType(Integer userId, LocalDate taskDate, String taskType);
+
+    /** 统计区间内的任务（指标量化：点击率 / 完成率） */
+    List<DailyTask> findByTaskDateBetween(LocalDate start, LocalDate end);
 }

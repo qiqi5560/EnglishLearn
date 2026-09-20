@@ -26,7 +26,6 @@
         <el-step title="自由问答" />
       </el-steps>
 
-<<<<<<< HEAD
       <div class="test-layout">
         <!-- 左栏：题目区 -->
         <section class="question-pane">
@@ -35,32 +34,13 @@
 
             <div class="question-prompt">
               <p class="prompt-tag text-muted">AI 教练提问 · 第 {{ step + 1 }}/3 题</p>
-              <p class="question-text">{{ questions[step] }}</p>
-            </div>
-=======
-      <el-card shadow="never" class="question-card">
-        <div class="question-prompt">
-          <p class="text-muted">AI 教练提问（第 {{ step + 1 }}/3 题）</p>
-          <div class="question-line">
-            <p class="question-text">{{ questions[step] }}</p>
-            <el-button link type="primary" title="朗读题目" @click="speak(questions[step])">
-              <el-icon :size="18"><Headset /></el-icon>
-            </el-button>
-          </div>
-        </div>
-
-        <!-- 看图描述：随机展示静态题库中的图片 -->
-        <div v-if="step === 1 && imageItem" class="image-area">
-          <el-image :src="imageItem.image" fit="contain" class="question-image">
-            <template #error>
-              <div class="image-error">
-                <el-icon><Picture /></el-icon>
-                <span>请把图片放入 public/entrance-images，并在 data/entranceImages.ts 中配置</span>
+              <div class="question-line">
+                <p class="question-text">{{ questions[step] }}</p>
+                <el-button link type="primary" title="朗读题目" @click="speak(questions[step])">
+                  <el-icon :size="18"><Headset /></el-icon>
+                </el-button>
               </div>
-            </template>
-          </el-image>
-        </div>
->>>>>>> f49b35abb4d8abb721b99c4328b673b2b8bd9129
+            </div>
 
             <!-- 看图描述：随机展示静态题库中的图片 -->
             <div v-if="step === 1 && imageItem" class="image-area">
@@ -148,7 +128,6 @@ const submitting = ref(false)
 const targetGoal = ref('兴趣')
 const goals = ['考试', '商务', '出国', '兴趣']
 
-<<<<<<< HEAD
 // 纯展示文案
 const tips = [
   '尽量用完整句子回答，评价结果会更准确',
@@ -156,10 +135,7 @@ const tips = [
   '录音需要 Chrome / Edge 浏览器支持',
 ]
 
-const { isListening, recognitionSupported, start, stop } = useSpeech()
-=======
 const { isListening, recognitionSupported, start, stop, speak } = useSpeech()
->>>>>>> f49b35abb4d8abb721b99c4328b673b2b8bd9129
 
 // 随机抽取一张「看图描述」图片与对应问题
 const imageItem = ref<EntranceImageItem | null>(null)
@@ -304,23 +280,9 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
   padding: 26px 30px 30px;
 
-<<<<<<< HEAD
   .question-prompt {
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border);
-=======
-  .question-text {
-    font-size: 16px;
-    font-weight: 600;
-  }
-
-  .question-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-}
->>>>>>> f49b35abb4d8abb721b99c4328b673b2b8bd9129
 
     .prompt-tag {
       margin: 0;
@@ -330,13 +292,19 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
       text-transform: uppercase;
     }
 
-<<<<<<< HEAD
     .question-text {
       margin: 10px 0 0;
       font-size: 22px;
       font-weight: 700;
       line-height: 1.5;
       letter-spacing: -0.02em;
+    }
+
+    .question-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
     }
   }
 
@@ -369,21 +337,6 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .answer-label {
-=======
-  // 高度随屏幕伸缩，小屏不撑爆、大屏不过矮
-  $img-height: clamp(180px, 32vh, 340px);
-
-  .question-image {
-    width: 100%;
-    height: $img-height;
-    border-radius: var(--radius-md);
-    background: var(--bg-soft, #f5f7fb);
-  }
-
-  .image-error {
-    width: 100%;
-    height: $img-height;
->>>>>>> f49b35abb4d8abb721b99c4328b673b2b8bd9129
     display: flex;
     align-items: baseline;
     justify-content: space-between;

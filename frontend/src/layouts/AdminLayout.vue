@@ -29,6 +29,10 @@
             <el-icon><TrendCharts /></el-icon>
             <template #title>日活动量</template>
           </el-menu-item>
+          <el-menu-item index="/admin/metrics">
+            <el-icon><Histogram /></el-icon>
+            <template #title>推荐效果指标</template>
+          </el-menu-item>
         </el-menu-item-group>
 
         <el-menu-item-group title="系统监控">
