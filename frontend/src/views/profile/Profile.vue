@@ -70,6 +70,16 @@
             <el-form-item label="昵称">
               <el-input v-model="editForm.nickname" maxlength="20" placeholder="请输入昵称" />
             </el-form-item>
+            <el-form-item label="个性签名">
+              <el-input
+                v-model="editForm.bio"
+                type="textarea"
+                :rows="2"
+                maxlength="100"
+                show-word-limit
+                placeholder="写一句话介绍自己，会展示在你的公开主页"
+              />
+            </el-form-item>
             <el-form-item label="年龄段">
               <el-select v-model="editForm.ageGroup" style="width: 100%">
                 <el-option v-for="g in AGE_GROUPS" :key="g.value" :label="g.label" :value="g.value" />
@@ -112,7 +122,7 @@ const userStore = useUserStore()
 const loading = ref(false)
 const saving = ref(false)
 const editVisible = ref(false)
-const editForm = reactive({ nickname: '', ageGroup: 'adult' })
+const editForm = reactive({ nickname: '', ageGroup: 'adult', bio: '' })
 
 const ageGroupLabel = computed(() => {
   const v = userStore.userInfo?.ageGroup
@@ -127,6 +137,7 @@ function maskPhone(phone?: string) {
 function openEdit() {
   editForm.nickname = userStore.userInfo?.nickname ?? ''
   editForm.ageGroup = userStore.userInfo?.ageGroup ?? 'adult'
+  editForm.bio = userStore.userInfo?.bio ?? ''
   editVisible.value = true
 }
 
@@ -137,7 +148,11 @@ async function onSave() {
   }
   saving.value = true
   try {
-    await userStore.updateProfile({ nickname: editForm.nickname.trim(), ageGroup: editForm.ageGroup })
+    await userStore.updateProfile({
+      nickname: editForm.nickname.trim(),
+      ageGroup: editForm.ageGroup,
+      bio: editForm.bio.trim(),
+    })
     editVisible.value = false
     ElMessage.success('保存成功')
   } catch {

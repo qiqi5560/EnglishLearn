@@ -34,6 +34,7 @@ public final class Dtos {
         m.put("phone", user.phone);
         m.put("nickname", user.nickname);
         m.put("avatarUrl", user.avatarUrl);
+        m.put("bio", user.bio);
         m.put("ageGroup", user.ageGroup);
         m.put("role", user.userRole);
         m.put("guardianId", user.guardianId);

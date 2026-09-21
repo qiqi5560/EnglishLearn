@@ -2,6 +2,7 @@
   <div class="report page">
     <AppHeader title="学习报表">
       <template #right>
+        <SharePanel contentType="achievement" />
         <el-button link type="primary" @click="onExport">导出</el-button>
       </template>
     </AppHeader>
@@ -62,6 +63,7 @@ import AppHeader from '@/components/base/AppHeader.vue'
 import PeekMascot from '@/components/base/PeekMascot.vue'
 import GrowthLine from '@/components/business/chart/GrowthLine.vue'
 import RadarChart from '@/components/business/chart/RadarChart.vue'
+import SharePanel from '@/components/business/SharePanel.vue'
 import { useReportStore } from '@/stores/report'
 
 const reportStore = useReportStore()

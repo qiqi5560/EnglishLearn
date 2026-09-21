@@ -24,4 +24,10 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, In
     Page<CommunityPost> adminSearch(@Param("status") Integer status, Pageable pageable);
 
     long countByStatus(Integer status);
+
+    /** 他人主页：该用户发布的帖子数 */
+    long countByAuthorUserId(Integer authorUserId);
+
+    /** 他人主页「动态」：该用户最近发布的公开帖子 */
+    List<CommunityPost> findTop10ByAuthorUserIdAndStatusOrderByCreateTimeDesc(Integer authorUserId, Integer status);
 }

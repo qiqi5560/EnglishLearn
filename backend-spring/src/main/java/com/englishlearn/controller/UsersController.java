@@ -13,6 +13,7 @@ import com.englishlearn.repository.UserRepository;
 import com.englishlearn.security.AuthFacade;
 import com.englishlearn.service.AuthService;
 import com.englishlearn.service.PlanService;
+import com.englishlearn.service.SocialProfileService;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,17 +41,20 @@ public class UsersController {
     private final PlanService planService;
     private final UserRepository userRepository;
     private final UserPartnerRepository partnerRepository;
+    private final SocialProfileService socialProfileService;
 
     public UsersController(AuthFacade authFacade,
                            AuthService authService,
                            PlanService planService,
                            UserRepository userRepository,
-                           UserPartnerRepository partnerRepository) {
+                           UserPartnerRepository partnerRepository,
+                           SocialProfileService socialProfileService) {
         this.authFacade = authFacade;
         this.authService = authService;
         this.planService = planService;
         this.userRepository = userRepository;
         this.partnerRepository = partnerRepository;
+        this.socialProfileService = socialProfileService;
     }
 
     @GetMapping("/me")
@@ -71,6 +75,9 @@ public class UsersController {
         }
         if (body.avatarUrl() != null) {
             user.avatarUrl = body.avatarUrl();
+        }
+        if (body.bio() != null) {
+            user.bio = body.bio().length() > 100 ? body.bio().substring(0, 100) : body.bio();
         }
         if (body.ageGroup() != null) {
             if (!List.of("child", "k12", "adult", "senior").contains(body.ageGroup())) {
@@ -160,6 +167,39 @@ public class UsersController {
         }
         partnerRepository.deleteByUserIdAndPartnerUserId(user.userId, partnerUserId);
         return ApiResponse.ok(null, "已删除");
+    }
+
+    /** 他人公开主页：资料 + 学习统计 + 成就 + 关注状态（不含手机号等敏感字段） */
+    @GetMapping("/{userId}/profile")
+    public ApiResponse profile(@PathVariable Integer userId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(socialProfileService.profile(user, userId));
+    }
+
+    @PostMapping("/{userId}/follow")
+    @Transactional
+    public ApiResponse follow(@PathVariable Integer userId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(socialProfileService.follow(user, userId), "已关注");
+    }
+
+    @DeleteMapping("/{userId}/follow")
+    @Transactional
+    public ApiResponse unfollow(@PathVariable Integer userId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(socialProfileService.unfollow(user, userId), "已取消关注");
+    }
+
+    @GetMapping("/{userId}/followers")
+    public ApiResponse followers(@PathVariable Integer userId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(socialProfileService.followers(userId, user));
+    }
+
+    @GetMapping("/{userId}/following")
+    public ApiResponse following(@PathVariable Integer userId) {
+        User user = authFacade.requireUser();
+        return ApiResponse.ok(socialProfileService.following(userId, user));
     }
 
     private Map<String, Object> partnerPayload(UserPartner rel) {

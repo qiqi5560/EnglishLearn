@@ -36,6 +36,8 @@ export function fetchMe() {
 export interface UpdateProfilePayload {
   nickname?: string
   avatarUrl?: string
+  /** 个性签名（他人主页展示） */
+  bio?: string
   ageGroup?: string
   guardianId?: number
 }

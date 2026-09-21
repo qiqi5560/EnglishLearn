@@ -16,6 +16,16 @@
             <el-icon><component :is="item.icon" /></el-icon>
             <span>{{ item.label }}</span>
           </router-link>
+
+          <!-- 站内信入口：私信 + 通知合计未读红点（轮询刷新） -->
+          <router-link to="/messages" class="nav-item nav-item--badge">
+            <el-badge :value="socialStore.unread.total" :hidden="!socialStore.unread.total" :max="99">
+              <span class="badge-host">
+                <el-icon><Message /></el-icon>
+                <span>消息</span>
+              </span>
+            </el-badge>
+          </router-link>
         </nav>
 
         <div class="nav-user">
@@ -56,14 +66,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LevelTag from '@/components/business/LevelTag.vue'
 import { useUserStore } from '@/stores/user'
+import { useSocialStore } from '@/stores/social'
 
 const router = useRouter()
 const userStore = useUserStore()
+const socialStore = useSocialStore()
 
 const navItems = [
   { path: '/home', label: '首页', icon: 'House' },
@@ -93,6 +105,11 @@ function onCommand(command: string) {
 
 onMounted(() => {
   if (!userStore.userInfo) userStore.fetchMe().catch(() => null)
+  if (userStore.token) socialStore.startPolling()
+})
+
+onUnmounted(() => {
+  socialStore.stopPolling()
 })
 </script>
 
@@ -228,6 +245,21 @@ onMounted(() => {
   to {
     width: 18px;
     opacity: 1;
+  }
+}
+
+.nav-item--badge {
+  padding: 0;
+
+  :deep(.el-badge) {
+    display: block;
+  }
+
+  .badge-host {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
   }
 }
 

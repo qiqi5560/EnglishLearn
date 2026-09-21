@@ -15,7 +15,7 @@
                   {{ post.author[0]?.toUpperCase() }}
                 </el-avatar>
                 <div class="post-head-info">
-                  <div class="author-name">{{ post.author }}</div>
+                  <div class="author-name author-link" @click.stop="goAuthor(post.authorId)">{{ post.author }}</div>
                   <div class="text-muted post-time">{{ formatDateTime(post.createTime) }}</div>
                 </div>
                 <span class="topic-tag">#{{ post.topic }}</span>
@@ -34,6 +34,7 @@
                 >
                   {{ post.likes }} 点赞
                 </el-button>
+                <SharePanel contentType="post" :content-id="post.id" />
                 <span class="action-hint text-muted">友善交流，一起进步</span>
               </div>
             </article>
@@ -80,7 +81,7 @@
             <div class="glass-card author-card">
               <div class="side-title">关于作者</div>
               <div class="author-row">
-                <el-avatar :size="52" :style="{ background: avatarColor(post.author) }">
+                <el-avatar :size="52" :style="{ background: avatarColor(post.author) }" class="author-avatar" @click="goAuthor(post.authorId)">
                   {{ post.author[0]?.toUpperCase() }}
                 </el-avatar>
                 <div class="author-text">
@@ -88,6 +89,11 @@
                   <span class="text-muted">发布于 {{ formatDateTime(post.createTime) }}</span>
                 </div>
               </div>
+
+              <button class="author-home-btn" type="button" @click="goAuthor(post.authorId)">
+                查看主页
+                <el-icon><ArrowRight /></el-icon>
+              </button>
 
               <div class="author-stats">
                 <div class="stat-item">
@@ -140,13 +146,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AppHeader from '@/components/base/AppHeader.vue'
 import PeekMascot from '@/components/base/PeekMascot.vue'
+import SharePanel from '@/components/business/SharePanel.vue'
 import { useCommunityStore } from '@/stores/community'
 
 const route = useRoute()
+const router = useRouter()
 const communityStore = useCommunityStore()
 
 const loading = ref(false)
@@ -174,6 +182,10 @@ function avatarColor(name: string) {
 function formatDateTime(t?: string) {
   if (!t) return ''
   return t.length >= 16 ? t.slice(0, 16) : t
+}
+
+function goAuthor(authorId?: number | null) {
+  if (authorId) router.push(`/user/${authorId}`)
 }
 
 async function onLike() {
@@ -260,6 +272,16 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         font-size: 14.5px;
         font-weight: 700;
         letter-spacing: -0.01em;
+      }
+
+      .author-link {
+        cursor: pointer;
+        transition: color 0.3s ease;
+      }
+
+      .author-link:hover {
+        color: var(--primary);
+        text-decoration: underline;
       }
 
       .post-time {
@@ -457,6 +479,49 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
       span {
         font-size: 12.5px;
+      }
+    }
+
+    .author-avatar {
+      cursor: pointer;
+      transition: transform 0.4s $ease-spring;
+    }
+
+    .author-avatar:hover {
+      transform: scale(1.06);
+    }
+  }
+
+  .author-home-btn {
+    width: 100%;
+    height: 38px;
+    margin-top: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid rgba(59, 111, 224, 0.24);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    cursor: pointer;
+    transition:
+      transform 0.35s $ease-apple,
+      box-shadow 0.35s $ease-apple;
+
+    .el-icon {
+      transition: transform 0.4s $ease-apple;
+    }
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(31, 42, 68, 0.12);
+
+      .el-icon {
+        transform: translateX(3px);
       }
     }
   }

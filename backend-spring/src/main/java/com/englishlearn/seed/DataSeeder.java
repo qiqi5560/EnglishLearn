@@ -13,8 +13,12 @@ import com.englishlearn.entity.PostLike;
 import com.englishlearn.entity.QuoteMaterial;
 import com.englishlearn.entity.Scene;
 import com.englishlearn.entity.StudyRecord;
+import com.englishlearn.entity.ShareRecord;
 import com.englishlearn.entity.SysConfig;
 import com.englishlearn.entity.User;
+import com.englishlearn.entity.UserFollow;
+import com.englishlearn.entity.UserMessage;
+import com.englishlearn.entity.UserNotification;
 import com.englishlearn.repository.AssessmentRecordRepository;
 import com.englishlearn.repository.CommunityCommentRepository;
 import com.englishlearn.repository.CommunityPostRepository;
@@ -27,7 +31,11 @@ import com.englishlearn.repository.PostLikeRepository;
 import com.englishlearn.repository.QuoteMaterialRepository;
 import com.englishlearn.repository.SceneRepository;
 import com.englishlearn.repository.StudyRecordRepository;
+import com.englishlearn.repository.ShareRecordRepository;
 import com.englishlearn.repository.SysConfigRepository;
+import com.englishlearn.repository.UserFollowRepository;
+import com.englishlearn.repository.UserMessageRepository;
+import com.englishlearn.repository.UserNotificationRepository;
 import com.englishlearn.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +75,10 @@ public class DataSeeder implements CommandLineRunner {
     private final SysConfigRepository configRepository;
     private final QuoteMaterialRepository quoteRepository;
     private final PostLikeRepository postLikeRepository;
+    private final UserMessageRepository chatRepository;
+    private final UserNotificationRepository notificationRepository;
+    private final UserFollowRepository followRepository;
+    private final ShareRecordRepository shareRepository;
     private final BCryptPasswordEncoder encoder;
 
     public DataSeeder(PlatformTransactionManager txManager,
@@ -84,6 +96,10 @@ public class DataSeeder implements CommandLineRunner {
                       SysConfigRepository configRepository,
                       QuoteMaterialRepository quoteRepository,
                       PostLikeRepository postLikeRepository,
+                      UserMessageRepository chatRepository,
+                      UserNotificationRepository notificationRepository,
+                      UserFollowRepository followRepository,
+                      ShareRecordRepository shareRepository,
                       BCryptPasswordEncoder encoder) {
         this.tx = new TransactionTemplate(txManager);
         this.userRepository = userRepository;
@@ -100,6 +116,10 @@ public class DataSeeder implements CommandLineRunner {
         this.configRepository = configRepository;
         this.quoteRepository = quoteRepository;
         this.postLikeRepository = postLikeRepository;
+        this.chatRepository = chatRepository;
+        this.notificationRepository = notificationRepository;
+        this.followRepository = followRepository;
+        this.shareRepository = shareRepository;
         this.encoder = encoder;
     }
 
@@ -252,6 +272,7 @@ public class DataSeeder implements CommandLineRunner {
         seedPlansAndLearning(users, scenes, resources);
         seedTrainingAndBehavior(users, scenes, resources);
         seedLikes(users);
+        seedSocial(users);
         seedConfigs();
         log.info("seed: 演示数据初始化完成");
     }
@@ -529,6 +550,99 @@ public class DataSeeder implements CommandLineRunner {
                 postLikeRepository.save(like);
             }
         }
+    }
+
+    /** 社交演示数据：个性签名、关注关系、私信（含未读）、社区互动通知、分享记录 */
+    private void seedSocial(Map<String, User> users) {
+        if (chatRepository.count() > 0) {
+            return;
+        }
+        User momo = users.get("13800138000");
+        User leo = users.get("13700000000");
+        User cici = users.get("13600000000");
+        if (momo == null || leo == null || cici == null) {
+            return;
+        }
+        momo.bio = "每天开口十分钟，正在冲刺雅思口语 6.5";
+        leo.bio = "外企打工人，早起练商务口语";
+        cici.bio = "英语专业在读，爱看电影练听力";
+        userRepository.saveAll(List.of(momo, leo, cici));
+
+        // 关注关系：Momo 与 Leo 互关，Cici 关注 Momo，Leo 关注 Cici
+        mkFollow(momo, leo);
+        mkFollow(leo, momo);
+        mkFollow(cici, momo);
+        mkFollow(leo, cici);
+
+        // 私信：Leo 与 Cici 发给 Momo 的消息保持未读，红点有内容可看
+        mkMessage(leo, momo, "Momo，明天晚上八点要不要一起练「机场值机」？", 0);
+        mkMessage(momo, leo, "好呀！我把常用句型整理一下发你。", 1);
+        mkMessage(leo, momo, "太好了，我这边先复习广播词的连读。", 0);
+        mkMessage(cici, momo, "你那篇《开口说英语》的帖子写得好真实，我也有同感～", 0);
+        mkMessage(momo, cici, "谢谢！一起加油，坚持就会看到变化。", 1);
+
+        // 社区互动通知：以 Momo 的帖子为互动对象
+        List<CommunityPost> momoPosts = postRepository.findAll().stream()
+                .filter(p -> p.author != null && momo.userId.equals(p.author.userId))
+                .toList();
+        CommunityPost target = momoPosts.isEmpty() ? null : momoPosts.get(0);
+        Integer targetId = target == null ? 0 : target.postId;
+        String title = target == null ? "我的第一篇帖子" : target.title;
+        mkNotification(momo, leo, "like", "post", targetId, "Leo 赞了你的帖子《" + title + "》", 0);
+        mkNotification(momo, cici, "comment", "post", targetId,
+                "Cici 评论了你的帖子《" + title + "》：「写得真好，我也要坚持打卡！」", 0);
+        mkNotification(momo, leo, "reply", "post", targetId,
+                "Leo 也在《" + title + "》下回复了你：「同感，一起练习进步更快。」", 1);
+
+        // 分享记录
+        mkShare(momo, "post", targetId, "weibo");
+        mkShare(leo, "achievement", null, "wechat");
+        log.info("seed: 社交演示数据初始化完成（关注 {} 条 / 私信 {} 条 / 通知 {} 条 / 分享 {} 条）",
+                followRepository.count(), chatRepository.count(),
+                notificationRepository.count(), shareRepository.count());
+    }
+
+    private void mkFollow(User follower, User followee) {
+        if (follower.userId.equals(followee.userId)
+                || followRepository.existsByFollowerIdAndFolloweeId(follower.userId, followee.userId)) {
+            return;
+        }
+        UserFollow rel = new UserFollow();
+        rel.followerId = follower.userId;
+        rel.followeeId = followee.userId;
+        followRepository.save(rel);
+    }
+
+    private void mkMessage(User from, User to, String content, Integer readFlag) {
+        UserMessage m = new UserMessage();
+        m.senderId = from.userId;
+        m.receiverId = to.userId;
+        m.content = content;
+        m.readFlag = readFlag;
+        chatRepository.save(m);
+    }
+
+    private void mkNotification(User target, User actor, String type, String targetType,
+                                Integer targetId, String content, Integer readFlag) {
+        UserNotification n = new UserNotification();
+        n.userId = target.userId;
+        n.actorId = actor.userId;
+        n.type = type;
+        n.targetType = targetType;
+        n.targetId = targetId;
+        n.content = content;
+        n.readFlag = readFlag;
+        notificationRepository.save(n);
+    }
+
+    private void mkShare(User user, String contentType, Integer contentId, String channel) {
+        ShareRecord r = new ShareRecord();
+        r.userId = user.userId;
+        r.contentType = contentType;
+        r.contentId = contentId;
+        r.channel = channel;
+        r.shareUrl = "/#/" + ("post".equals(contentType) ? "community/post/" + contentId : "profile");
+        shareRepository.save(r);
     }
 
     /** 生成一条会话：可指定时长与用户发言数（0 表示未开口），每次发言对应一条评测记录 */

@@ -18,6 +18,8 @@ export interface UserDto {
   phone: string
   nickname: string
   avatarUrl?: string | null
+  /** 个性签名 */
+  bio?: string | null
   ageGroup: 'child' | 'k12' | 'adult' | 'senior'
   role: 'learner' | 'admin' | 'guardian'
   guardianId?: number | null
@@ -605,4 +607,148 @@ export interface ReadEvalDto {
   missingWords: string[]
   feedback: string
   tips: string[]
+}
+
+/* ==================== 社交：站内信 / 通知 / 关注 / 分享 ==================== */
+
+/** 私信消息 */
+export interface ChatMessageItem {
+  id: number
+  senderId: number
+  receiverId: number
+  content: string
+  /** 是否为当前登录用户发出 */
+  mine: boolean
+  read: boolean
+  createTime: string
+}
+
+export interface PeerDto {
+  userId: number
+  nickname: string
+  avatarUrl?: string | null
+}
+
+/** 会话列表项 */
+export interface ConversationDto {
+  peerId: number
+  peerName: string
+  peerAvatar?: string | null
+  lastMessage: string
+  lastMine: boolean
+  lastTime: string
+  unread: number
+}
+
+export interface ConversationHistoryResult {
+  peer: PeerDto
+  list: ChatMessageItem[]
+}
+
+export interface UnreadResult {
+  message: number
+  notification: number
+  total: number
+}
+
+/** 站内系统通知（社区互动） */
+export interface NotificationDto {
+  id: number
+  type: 'like' | 'comment' | 'reply'
+  actorId: number
+  actorName: string
+  actorAvatar?: string | null
+  targetType: string
+  targetId: number
+  content: string
+  read: boolean
+  createTime: string
+}
+
+export interface NotificationListResult {
+  list: NotificationDto[]
+  unread: number
+}
+
+/** 他人主页的公开用户资料（不含手机号等敏感字段） */
+export interface PublicUserDto {
+  userId: number
+  nickname: string
+  avatarUrl?: string | null
+  bio?: string | null
+  level?: string | null
+  registerTime?: string | null
+}
+
+export interface UserStatsDto {
+  studyDays: number
+  totalMinutes: number
+  sessionCount: number
+  postCount: number
+  avgScore: number
+}
+
+export interface AchievementDto {
+  key: string
+  name: string
+  desc: string
+  value: number
+  target: number
+  achieved: boolean
+  progress: number
+}
+
+export interface ProfilePostDto {
+  id: number
+  title: string
+  topic: string
+  likes: number
+  comments: number
+  createTime: string
+}
+
+export interface UserProfileResult {
+  user: PublicUserDto
+  stats: UserStatsDto
+  achievements: AchievementDto[]
+  followers: number
+  following: number
+  isSelf: boolean
+  followingByMe: boolean
+  followedMe: boolean
+  posts: ProfilePostDto[]
+}
+
+export interface FollowUserDto {
+  userId: number
+  nickname: string
+  avatarUrl?: string | null
+  bio?: string | null
+  level?: string | null
+  followingByMe: boolean
+}
+
+export interface FollowResult {
+  followingByMe: boolean
+  already?: boolean
+  removed?: number
+  followers: number
+}
+
+/** 分享渠道：不接入 SDK，只做复制链接与渠道统计 */
+export type ShareChannel = 'weibo' | 'xiaohongshu' | 'wechat' | 'copy'
+
+export interface ShareResult {
+  shareUrl: string
+  channel: string
+  total: number
+}
+
+export interface ShareRecordDto {
+  id: number
+  contentType: string
+  contentId?: number | null
+  channel: string
+  shareUrl: string
+  createTime: string
 }

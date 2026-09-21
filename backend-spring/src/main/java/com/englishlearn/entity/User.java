@@ -35,6 +35,10 @@ public class User {
     @Column(name = "avatar_url", length = 255)
     public String avatarUrl;
 
+    /** 个性签名（他人主页展示） */
+    @Column(name = "bio", length = 100)
+    public String bio;
+
     @Column(name = "age_group", length = 20)
     public String ageGroup;
 

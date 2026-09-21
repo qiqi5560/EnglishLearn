@@ -61,7 +61,7 @@
                     </el-avatar>
                     <div class="author-block">
                       <div class="author-line">
-                        <span class="author-name">{{ post.author }}</span>
+                        <span class="author-name author-link" @click.stop="$router.push(`/user/${post.authorId}`)">{{ post.author }}</span>
                         <span class="level-badge">Lv.{{ activityLevel(post.likes, post.comments) }}</span>
                       </div>
                       <div class="post-meta text-muted">
@@ -382,6 +382,16 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     .author-name {
       font-size: 14.5px;
       font-weight: 700;
+
+      &.author-link {
+        cursor: pointer;
+        transition: color 0.3s ease;
+      }
+
+      &.author-link:hover {
+        color: var(--primary);
+        text-decoration: underline;
+      }
       letter-spacing: -0.01em;
     }
 

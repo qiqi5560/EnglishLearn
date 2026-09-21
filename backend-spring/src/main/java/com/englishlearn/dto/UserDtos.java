@@ -8,7 +8,7 @@ public final class UserDtos {
     private UserDtos() {
     }
 
-    public record UpdateMeIn(String nickname, String avatarUrl, String ageGroup, Integer guardianId) {}
+    public record UpdateMeIn(String nickname, String avatarUrl, String bio, String ageGroup, Integer guardianId) {}
 
     public record PasswordIn(String oldPassword, String newPassword) {}
 

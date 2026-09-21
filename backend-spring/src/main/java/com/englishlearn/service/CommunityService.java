@@ -35,13 +35,16 @@ public class CommunityService {
     private final CommunityPostRepository postRepository;
     private final CommunityCommentRepository commentRepository;
     private final PostLikeRepository likeRepository;
+    private final NotificationService notificationService;
 
     public CommunityService(CommunityPostRepository postRepository,
                             CommunityCommentRepository commentRepository,
-                            PostLikeRepository likeRepository) {
+                            PostLikeRepository likeRepository,
+                            NotificationService notificationService) {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
         this.likeRepository = likeRepository;
+        this.notificationService = notificationService;
     }
 
     public List<String> topics() {
@@ -122,6 +125,13 @@ public class CommunityService {
         }
         post.likes = likes;
         postRepository.save(post);
+        Integer authorId = authorId(post);
+        if (liked) {
+            notificationService.notifyInteraction(authorId, NotificationService.TYPE_LIKE, user.userId,
+                    "post", postId, nameOf(user) + " 赞了你的帖子《" + titleOf(post) + "》");
+        } else {
+            notificationService.revokeInteraction(authorId, NotificationService.TYPE_LIKE, user.userId, postId);
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("liked", liked);
         data.put("likes", likes);
@@ -145,7 +155,42 @@ public class CommunityService {
         comment = commentRepository.save(comment);
         post.commentCount = (post.commentCount == null ? 0 : post.commentCount) + 1;
         postRepository.save(post);
+        notifyComment(user, post, content.strip());
         return Dtos.commentToDict(comment);
+    }
+
+    /**
+     * 评论后的通知插桩：楼主收到「评论」通知；同帖下最近一位其他评论者收到「回复」通知。
+     */
+    private void notifyComment(User actor, CommunityPost post, String content) {
+        Integer authorId = authorId(post);
+        String title = titleOf(post);
+        String snippet = content.length() > 40 ? content.substring(0, 40) + "…" : content;
+        notificationService.notifyInteraction(authorId, NotificationService.TYPE_COMMENT, actor.userId,
+                "post", post.postId, nameOf(actor) + " 评论了你的帖子《" + title + "》：" + snippet);
+        Integer repliedUserId = null;
+        for (CommunityComment c : commentRepository.findByPostIdOrderByCommentIdAsc(post.postId)) {
+            Integer commenter = c.author != null ? c.author.userId : null;
+            if (commenter == null || commenter.equals(actor.userId) || commenter.equals(authorId)) {
+                continue;
+            }
+            repliedUserId = commenter;
+        }
+        if (repliedUserId != null && !repliedUserId.equals(authorId)) {
+            notificationService.notifyInteraction(repliedUserId, NotificationService.TYPE_REPLY, actor.userId,
+                    "post", post.postId, nameOf(actor) + " 也在《" + title + "》下回复了你：" + snippet);
+        }
+    }
+
+    private static String nameOf(User user) {
+        return user.nickname == null || user.nickname.isBlank() ? "用户" : user.nickname;
+    }
+
+    private static String titleOf(CommunityPost post) {
+        if (post.title == null || post.title.isBlank()) {
+            return "未命名帖子";
+        }
+        return post.title.length() > 20 ? post.title.substring(0, 20) + "…" : post.title;
     }
 
     @Transactional
