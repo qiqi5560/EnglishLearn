@@ -2,7 +2,7 @@
 """
 llm.py —— 大模型对话模块 (LLM)
 
-作用：调用本地 Ollama 服务里的 qwen2.5:7b-instruct 模型，
+作用：调用本地 Ollama 服务里的 qwen2.5:1.5b-instruct 模型，
 配合"场景人设(system prompt)"，让 AI 扮演餐厅服务员、面试官等角色，
 用英语和用户进行多轮对话练习。
 
@@ -100,7 +100,7 @@ def ensure_service():
 FEEDBACK_PREFIXES = ("(Fix)", "(Feedback)", "(Tip)")
 
 # 用于定位反馈标记：不依赖换行，直接按"(Fix)/(Feedback)/(Tip)"出现的位置切分。
-# 原因：7B 模型有时会把整份成绩报告输出成一整行（比如口语测试场景），
+# 原因：1.5B 模型有时会把整份成绩报告输出成一整行（比如口语测试场景），
 # 若只按换行拆分，报告会被误当成正文朗读出来、而文字提示区是空的。
 _FEEDBACK_PATTERN = re.compile(r"\((?:Fix|Feedback|Tip)\)", re.IGNORECASE)
 

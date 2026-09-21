@@ -83,7 +83,7 @@ ASR_LANGUAGE = "en"
 # Ollama 程序位置与模型存放位置（都在 D 盘）
 OLLAMA_EXE = r"D:\Ollama\ollama\ollama.exe"
 OLLAMA_MODELS_DIR = r"D:\Ollama\models"
-LLM_MODEL = "qwen2.5:7b-instruct"        # 组长指定使用的千问模型
+LLM_MODEL = "qwen2.5:1.5b-instruct"      # 组长指定使用的千问模型（1.5b，速度快约 4 倍）
 
 # --- 大模型服务地址（弹性配置：代码不写死，靠环境变量切换）---
 # 本机自己用      -> 什么都不用设，默认连 http://127.0.0.1:11434

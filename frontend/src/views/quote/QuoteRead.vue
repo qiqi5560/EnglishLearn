@@ -216,7 +216,15 @@
                   <el-icon :size="26"><Microphone /></el-icon>
                 </button>
                 <p class="mic-hint text-muted">
-                  {{ isListening ? '正在听你说…' : evaluating ? 'AI 正在评分…' : '点击麦克风，跟读上面这段' }}
+                  {{
+                    isListening
+                      ? '正在听你说…'
+                      : isRecording
+                        ? '正在录音，读完再点一次结束'
+                        : evaluating
+                          ? 'AI 正在评分…'
+                          : '点击麦克风，跟读上面这段'
+                  }}
                 </p>
                 <p v-if="!recognitionSupported" class="mic-warn">
                   当前浏览器不支持语音识别，建议使用 Chrome / Edge
@@ -237,6 +245,7 @@
                     <li v-for="(t, i) in evalResult.tips" :key="i">{{ t }}</li>
                   </ul>
                   <p v-if="spokenText" class="eval-spoken text-muted">识别到：{{ spokenText }}</p>
+                  <PronDetail v-if="evalResult?.phoneme" :phoneme="evalResult.phoneme" />
                 </template>
                 <div v-else class="record-placeholder text-muted">
                   跟读后这里会显示发音、流利度、语调与完整度四项评分。
@@ -351,6 +360,7 @@
                           <li v-for="(t, ti) in paraEval[i].tips" :key="ti">{{ t }}</li>
                         </ul>
                         <p v-if="paraSpoken[i]" class="eval-spoken text-muted">识别到：{{ paraSpoken[i] }}</p>
+                        <PronDetail v-if="paraEval[i]?.phoneme" :phoneme="paraEval[i]!.phoneme!" />
                       </div>
                     </div>
                   </div>
@@ -428,6 +438,8 @@ import ScoreRing from '@/components/base/ScoreRing.vue'
 import FireworksBurst from '@/components/base/FireworksBurst.vue'
 import LevelTag from '@/components/business/LevelTag.vue'
 import { useSpeech } from '@/composables/useSpeech'
+import { useRecorder } from '@/composables/useRecorder'
+import PronDetail from '@/components/business/PronDetail.vue'
 import {
   createDoc,
   createQuote,
@@ -435,6 +447,7 @@ import {
   deleteQuote,
   docDetail,
   evaluateReading,
+  evaluateReadingAudio,
   listDocs,
   listQuotes,
   translateDoc,
@@ -480,6 +493,9 @@ const recordingPara = ref(-1)
 
 // ---------------- 朗读 / 跟读 ----------------
 const { isListening, recognitionSupported, start, stop } = useSpeech()
+// 录音用于音素级评测：浏览器支持语音识别时与识别并行收音，
+// 不支持时（Firefox / Safari）也能只靠录音完成音素打分
+const { isRecording, start: startRecording, stop: stopRecording } = useRecorder()
 const speaking = ref(false)
 const sentenceIndex = ref(-1)
 const paraIndex = ref(-1)
@@ -670,17 +686,26 @@ async function translateAll() {
 }
 
 // ==================== 朗读 ====================
+/** 朗读会话代号：每次 stopSpeak 自增。cancel() 也会触发 onend，
+ *  用代号判断这次 onend 是「自然读完」还是「被停止」，后者不再续播下一句 */
+let speakSession = 0
+
 function utter(text: string, onEnd: () => void) {
   const synth = window.speechSynthesis
   if (!synth) {
     onEnd()
     return
   }
+  const session = speakSession
   const u = new SpeechSynthesisUtterance(text)
   u.lang = 'en-US'
   u.rate = rate.value
-  u.onend = onEnd
-  u.onerror = onEnd
+  const done = () => {
+    if (session !== speakSession) return // 已点停止 / 已开新带读，链路作废
+    onEnd()
+  }
+  u.onend = done
+  u.onerror = done
   synth.speak(u)
 }
 
@@ -755,6 +780,7 @@ function playDoc(list: string[][], para: number, i: number) {
 }
 
 function stopSpeak() {
+  speakSession += 1 // 立即作废当前朗读链，防止 cancel() 触发的 onend 续播下一句
   window.speechSynthesis?.cancel()
   speaking.value = false
   sentenceIndex.value = -1
@@ -762,6 +788,17 @@ function stopSpeak() {
 }
 
 // ==================== 跟读评分 ====================
+/** 打开麦克风，仅凭录音评分（浏览器不支持语音识别时的路径） */
+async function beginRecordingOnly() {
+  const ok = await startRecording()
+  if (!ok) {
+    ElMessage.warning('无法访问麦克风，请检查浏览器权限')
+    return false
+  }
+  ElMessage.info('开始录音，读完再点一次结束')
+  return true
+}
+
 function onRecord() {
   const target = activeQuote.value?.textEn
   if (!target) return
@@ -769,6 +806,15 @@ function onRecord() {
     stop()
     return
   }
+  if (isRecording.value) {
+    runEval(target, '')
+    return
+  }
+  if (!recognitionSupported.value) {
+    beginRecordingOnly()
+    return
+  }
+  void startRecording() // 录音与语音识别并行，不阻塞识别启动
   const ok = start((text) => {
     spokenText.value = text
     runEval(target, text)
@@ -776,7 +822,7 @@ function onRecord() {
   if (!ok) ElMessage.warning('当前浏览器不支持语音识别，请使用 Chrome / Edge')
 }
 
-function recordParagraph(index: number) {
+async function recordParagraph(index: number) {
   const doc = activeDoc.value
   if (!doc) return
   if (isListening.value) {
@@ -785,6 +831,15 @@ function recordParagraph(index: number) {
     return
   }
   const target = doc.paragraphs[index].en
+  if (isRecording.value) {
+    runEval(target, '', index)
+    return
+  }
+  if (!recognitionSupported.value) {
+    if (await beginRecordingOnly()) recordingPara.value = index
+    return
+  }
+  await startRecording()
   const ok = start(
     (text) => {
       paraSpoken[index] = text
@@ -807,11 +862,32 @@ function clearParaEval(index: number) {
   delete paraSpoken[index]
 }
 
+/**
+ * 优先用录音做音素级评测（逐音素判定），
+ * 拿不到录音或后端音素引擎不可用时，回退到文本比对评分。
+ */
+async function evalWithAudio(target: string, spoken: string): Promise<ReadEvalDto | null> {
+  const rec = stopRecording()
+  if (rec) {
+    try {
+      return await evaluateReadingAudio(rec.blob, target)
+    } catch {
+      /* 音素评测失败：静默回退到文本评分 */
+    }
+  }
+  if (!spoken.trim()) {
+    ElMessage.warning('没听到你说的内容，请再靠近麦克风读一次')
+    return null
+  }
+  return await evaluateReading(target, spoken)
+}
+
 async function runEval(target: string, spoken: string, paraIdx = -1) {
   evaluating.value = true
   if (paraIdx >= 0) paraEvalTarget.value = paraIdx
   try {
-    const res = await evaluateReading(target, spoken)
+    const res = await evalWithAudio(target, spoken)
+    if (!res) return
     if (paraIdx >= 0) {
       paraEval[paraIdx] = res
     } else {

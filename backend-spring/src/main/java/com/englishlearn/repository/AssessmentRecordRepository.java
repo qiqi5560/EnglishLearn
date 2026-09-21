@@ -18,4 +18,7 @@ public interface AssessmentRecordRepository extends JpaRepository<AssessmentReco
             "where a.sessionId = s.sessionId and s.userId = :userId " +
             "order by a.assessId desc")
     List<AssessmentRecord> latest(@Param("userId") Integer userId, Pageable pageable);
+
+    /** 无会话的评测（名句跟读等）：直接按 user_id 取最近记录 */
+    List<AssessmentRecord> findTop20ByUserIdOrderByAssessIdDesc(Integer userId);
 }

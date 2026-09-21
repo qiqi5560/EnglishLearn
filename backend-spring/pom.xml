@@ -22,6 +22,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <sqlite.version>3.47.1.0</sqlite.version>
         <springdoc.version>2.8.5</springdoc.version>
+        <onnxruntime.version>1.20.0</onnxruntime.version>
         <!-- 强制 UTF-8 编译：避免中文 Windows 下默认 GBK 编译把源文件中文注释/字符串编译成乱码 -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -88,6 +89,13 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
+        </dependency>
+
+        <!-- ONNX Runtime：本地运行音素识别模型（wav2vec2 on TIMIT），做音素级发音评测 -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>${onnxruntime.version}</version>
         </dependency>
 
         <dependency>

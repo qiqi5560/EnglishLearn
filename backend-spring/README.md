@@ -53,7 +53,7 @@ java -jar target/english-learn-backend-1.0.0.jar
 | `app.sms.mock-code` | `123456` | mock 短信验证码（发送时打印到日志） |
 | `llm.provider` | `mock` | LLM 提供方：`mock` / `ollama` |
 | `llm.ollama.base-url` | `http://localhost:11434` | Ollama 服务地址 |
-| `llm.ollama.model` | `qwen2.5:7b-instruct` | Ollama 模型名 |
+| `llm.ollama.model` | `qwen2.5:1.5b-instruct` | Ollama 模型名 |
 
 ## 演示账号
 
@@ -92,7 +92,7 @@ java -jar target/english-learn-backend-1.0.0.jar
 1. 先确认 Ollama 已启动并已拉取模型：
 
    ```bash
-   ollama pull qwen2.5:7b-instruct
+   ollama pull qwen2.5:1.5b-instruct
    ```
 
 2. 修改 `application.yml`：

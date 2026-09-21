@@ -306,34 +306,8 @@ public class MockLlmProvider implements LlmProvider {
 
     @Override
     public EvalResult evaluateReading(String target, String spoken) {
-        EvalResult r = new EvalResult();
-        int tc = (target == null ? "" : target).trim().length();
-        int sc = (spoken == null ? "" : spoken).trim().length();
-        // 覆盖度 = 用户所说字符占参照的比例（粗粒度的完整度估计）
-        int covered = Math.min(tc, sc);
-        double coverage = tc == 0 ? 0 : (double) covered / tc;
-        double natural = clamp(58 + coverage * 30 + uniform(-3, 3), 50, 97);
-        double pron = clamp(natural + uniform(-5, 5), 50, 97);
-        double fluency = clamp(natural - (sc < 8 ? 6 : 0) + uniform(-4, 4), 50, 97);
-        double reaction = round1(coverage * 100);
-        r.pron = round1(pron);
-        r.fluency = round1(fluency);
-        r.reaction = reaction;
-        r.natural = round1(natural);
-        String fb;
-        if (coverage < 0.5) {
-            fb = "只读到了原句的一部分，建议先逐句慢读，把每个单词念清楚。";
-        } else if (coverage < 0.9) {
-            fb = "大部分读到位了，试着把长句分段，稳住节奏再连起来。";
-        } else {
-            fb = "读得很完整，语调自然。继续保持，注意重音与情感。";
-        }
-        r.grammarFeedback = fb;
-        r.phonemeIssues = new ArrayList<>();
-        if (sc > 0 && (target != null && target.toLowerCase().contains("the"))) {
-            r.phonemeIssues.add(Map.of("word", "the", "phoneme", "/ðə/", "note", "th 需舌尖轻触上齿"));
-        }
-        return r;
+        // 与 Ollama 实现共用本地确定性打分，保证有无大模型时评分口径一致
+        return ReadingScorer.score(target, spoken);
     }
 
     private static double clamp(double v, double lo, double hi) {

@@ -77,3 +77,14 @@ export function translateDoc(docId: number, save = false) {
 export function evaluateReading(target: string, spoken: string) {
   return http.post<ReadEvalDto>('/quotes/evaluate', { target, spoken }, { timeout: 90000 })
 }
+
+/**
+ * 音素级跟读评测：上传录音（WAV）让后端用本地音素模型逐音素打分。
+ * 引擎不可用或录音无效时后端会报错，调用方应回退到 evaluateReading。
+ */
+export function evaluateReadingAudio(file: Blob, target: string) {
+  const form = new FormData()
+  form.append('file', file, 'reading.wav')
+  form.append('target', target)
+  return http.post<ReadEvalDto>('/quotes/evaluate-audio', form, { timeout: 90000 })
+}

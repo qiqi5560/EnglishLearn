@@ -68,9 +68,10 @@ public class ReportService {
             byDay.put(e.getKey(), e.getValue().stream().mapToDouble(Double::doubleValue).average().orElse(0));
         }
 
-        // 2) 累计统计
+        // 2) 累计统计：练习次数 = 已完成的对话练习 + 名句跟读次数
         int totalMinutes = records.stream().mapToInt(r -> r.durationMin == null ? 0 : r.durationMin).sum();
-        long totalSessions = sessionRepository.countByUserIdAndSessionStatus(user.userId, "finished");
+        long totalSessions = sessionRepository.countByUserIdAndSessionStatus(user.userId, "finished")
+                + studyRecordRepository.countByUserIdAndActionType(user.userId, "reading");
         Set<LocalDate> activeDays = new LinkedHashSet<>();
         for (StudyRecord r : records) {
             if (r.learnDate != null) activeDays.add(r.learnDate);
@@ -82,18 +83,17 @@ public class ReportService {
 
         LearningPlan plan = planRepository.findByUserIdAndPlanStatus(user.userId, "active").orElse(null);
 
-        // 3) 能力雷达：最近一次评测四维
-        List<AssessmentRecord> latest = assessmentRepository.latest(user.userId, PageRequest.of(0, 1));
-        List<Double> radarValues = new ArrayList<>();
-        if (!latest.isEmpty()) {
-            AssessmentRecord a = latest.get(0);
-            radarValues.add(a.pronScore == null ? 0.0 : a.pronScore);
-            radarValues.add(a.fluencyScore == null ? 0.0 : a.fluencyScore);
-            radarValues.add(a.reactionScore == null ? 0.0 : a.reactionScore);
-            radarValues.add(a.naturalScore == null ? 0.0 : a.naturalScore);
-        } else {
-            radarValues.addAll(List.of(0.0, 0.0, 0.0, 0.0));
-        }
+        // 3) 能力雷达：最近 20 次评测（对话逐句 + 名句跟读）四维均值，更平滑也更全面
+        List<AssessmentRecord> merged = new ArrayList<>();
+        merged.addAll(assessmentRepository.latest(user.userId, PageRequest.of(0, 20)));
+        merged.addAll(assessmentRepository.findTop20ByUserIdOrderByAssessIdDesc(user.userId));
+        merged.sort((a, b) -> Integer.compare(b.assessId, a.assessId));
+        if (merged.size() > 20) merged = merged.subList(0, 20);
+        List<Double> radarValues = List.of(
+                avgDim(merged, a -> a.pronScore),
+                avgDim(merged, a -> a.fluencyScore),
+                avgDim(merged, a -> a.reactionScore),
+                avgDim(merged, a -> a.naturalScore));
 
         // 4) 最近完成会话
         List<ConversationSession> recent = sessionRepository.findTop5ByUserIdAndSessionStatusOrderByEndTimeDesc(user.userId, "finished");
@@ -136,5 +136,15 @@ public class ReportService {
 
     private static double round1(double v) {
         return Math.round(v * 10.0) / 10.0;
+    }
+
+    /** 对一组评测的某一维求均值（空值跳过），无数据返回 0 */
+    private static double avgDim(List<AssessmentRecord> records, java.util.function.Function<AssessmentRecord, Double> dim) {
+        return records.stream()
+                .map(dim)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0.0);
     }
 }

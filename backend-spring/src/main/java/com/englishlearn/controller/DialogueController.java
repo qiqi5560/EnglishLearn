@@ -113,6 +113,16 @@ public class DialogueController {
             throw new ApiException(422, "消息内容不能为空");
         }
         DialogueService.SendResult result = dialogueService.sendMessage(session, body.content());
+        // 命中不当用语：正常返回 200（不走异常，避免前端弹成红色发送失败），由前端做撤回展示
+        if (result.blocked()) {
+            Map<String, Object> revoked = new LinkedHashMap<>();
+            revoked.put("blocked", true);
+            revoked.put("reason", result.reason());
+            revoked.put("tip", result.tip());
+            revoked.put("noticeEn", result.noticeEn());
+            revoked.put("noticeZh", result.noticeZh());
+            return ApiResponse.ok(revoked, result.reason());
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("userMessage", Dtos.messageToDict(result.userMessage()));
         data.put("aiMessage", Dtos.messageToDict(result.aiMessage()));

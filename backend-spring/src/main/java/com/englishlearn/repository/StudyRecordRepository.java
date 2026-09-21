@@ -14,5 +14,8 @@ public interface StudyRecordRepository extends JpaRepository<StudyRecord, Intege
 
     List<StudyRecord> findByUserIdOrderByLearnDate(Integer userId);
 
+    /** 按类型计数（如 reading 跟读次数，用于报表练习次数统计） */
+    long countByUserIdAndActionType(Integer userId, String actionType);
+
     List<StudyRecord> findByLearnDateGreaterThanEqualOrderByLearnDate(LocalDate start);
 }

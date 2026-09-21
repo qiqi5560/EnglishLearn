@@ -127,4 +127,24 @@ public class QuoteController {
                 user, body.getOrDefault("target", ""), body.getOrDefault("spoken", ""));
         return ApiResponse.ok(eval);
     }
+
+    /**
+     * 音素级跟读评测：上传录音（16bit PCM WAV），用本地音素模型逐音素打分。
+     * 引擎不可用 / 录音无效时报错，前端自动回退到 /evaluate 的文本比对评分。
+     */
+    @PostMapping("/evaluate-audio")
+    public ApiResponse evaluateReadingAudio(@RequestParam("file") MultipartFile file,
+                                            @RequestParam("target") String target) {
+        User user = authFacade.requireUser();
+        if (file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "没有收到录音");
+        }
+        byte[] audio;
+        try {
+            audio = file.getBytes();
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "录音读取失败");
+        }
+        return ApiResponse.ok(quoteService.evaluateReadingAudio(user, target, audio));
+    }
 }

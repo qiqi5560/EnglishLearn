@@ -30,6 +30,68 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null
 }
 
+/* ============ 录音结束策略：连续收音 + 静音计时 ============ */
+
+/** 静音持续多久（毫秒）判定为「说完了」：犹豫 3 秒内不会自动结束 */
+const SILENCE_MS = 3000
+/** 单次录音最长时长（毫秒），兜底防止一直不结束 */
+const MAX_RECORD_MS = 60000
+/** 音量阈值（RMS 0~1）：超过它算「有声音」。环境吵调大，总被截断调小 */
+const VOICE_THRESHOLD = 0.02
+
+type VolumeMonitor = { stop: () => void }
+
+/**
+ * 打开麦克风做实时音量检测（每 100ms 算一次 RMS）。
+ * 拿不到权限 / 非安全上下文时返回 null，调用方自动退化为「按识别结果判断」。
+ */
+async function startVolumeMonitor(onVoice: (level: number) => void): Promise<VolumeMonitor | null> {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) return null
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext
+    if (!Ctx) {
+      stream.getTracks().forEach((t) => t.stop())
+      return null
+    }
+    const ctx: AudioContext = new Ctx()
+    const source = ctx.createMediaStreamSource(stream)
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 1024
+    source.connect(analyser)
+
+    const buf = new Uint8Array(analyser.fftSize)
+    const timer = window.setInterval(() => {
+      analyser.getByteTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i += 1) {
+        const v = (buf[i] - 128) / 128
+        sum += v * v
+      }
+      onVoice(Math.sqrt(sum / buf.length))
+    }, 100)
+
+    return {
+      stop: () => {
+        window.clearInterval(timer)
+        try {
+          source.disconnect()
+        } catch {
+          /* 忽略 */
+        }
+        try {
+          ctx.close()
+        } catch {
+          /* 忽略 */
+        }
+        stream.getTracks().forEach((t) => t.stop())
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
 /* ============ 语音合成：voices 异步加载 + 自动挑选语音 ============ */
 
 let voicesCache: SpeechSynthesisVoice[] = []
@@ -114,6 +176,10 @@ function pickVoice(text: string, voices: SpeechSynthesisVoice[]): SpeechSynthesi
 
 let resumeTimer: number | null = null
 
+/** 朗读会话代号：stopSpeaking() 自增。cancel() 同样会触发当前 utterance 的
+ *  onend/onerror，用代号区分「自然读完」和「被停止」，防止停止后回调继续执行 */
+let speakToken = 0
+
 function startResumeGuard() {
   stopResumeGuard()
   resumeTimer = window.setInterval(() => {
@@ -167,8 +233,13 @@ export function useSpeech() {
   const lastError = ref<string>('')
 
   let recognition: SpeechRecognitionLike | null = null
+  /** 当前录音的「正常结束」入口：先交出已识别内容，再收尾 */
+  let finishCurrent: (() => void) | null = null
 
-  /** 开始语音识别，识别到最终结果后回调 text */
+  /**
+   * 开始语音识别：连续收音，静音满 SILENCE_MS（默认 3 秒）才结束。
+   * 中间犹豫、停顿不会中断；结束或手动停止时一次性回调完整文本。
+   */
   function start(onResult: (text: string) => void, onEnd?: () => void): boolean {
     const Ctor = getRecognitionCtor()
     if (!Ctor) {
@@ -183,30 +254,89 @@ export function useSpeech() {
       }
       recognition = null
     }
+    finishCurrent = null
 
     const rec = new Ctor()
     rec.lang = 'en-US'
-    rec.continuous = false
+    rec.continuous = true // 连续收音：不再「一停就结束」
     rec.interimResults = true
     rec.maxAlternatives = 1
+
+    let settled = false
+    let finalText = ''
+    let startedAt = Date.now()
+    let lastVoiceAt = Date.now()
+    let monitor: VolumeMonitor | null = null
+    let tick: number | null = null
+    let restarts = 0
+
+    /** 统一收尾：只执行一次，保证已识别内容不丢 */
+    const finish = () => {
+      if (settled) return
+      settled = true
+      if (tick !== null) {
+        window.clearInterval(tick)
+        tick = null
+      }
+      if (monitor) {
+        monitor.stop()
+        monitor = null
+      }
+      try {
+        rec.stop()
+      } catch {
+        /* 忽略 */
+      }
+      if (recognition === rec) recognition = null
+      if (finishCurrent === finish) finishCurrent = null
+      isListening.value = false
+      const text = finalText.trim()
+      if (text) onResult(text)
+      onEnd?.()
+    }
+
+    // 真实音量检测：有声音就刷新「最后发声时间」
+    startVolumeMonitor((level) => {
+      if (level > VOICE_THRESHOLD) lastVoiceAt = Date.now()
+    }).then((m) => {
+      if (settled) {
+        m?.stop()
+        return
+      }
+      monitor = m
+    })
+
+    // 每 200ms 检查：静音够久 / 超时 → 结束
+    tick = window.setInterval(() => {
+      const now = Date.now()
+      if (now - lastVoiceAt >= SILENCE_MS || now - startedAt >= MAX_RECORD_MS) finish()
+    }, 200)
 
     rec.onstart = () => {
       isListening.value = true
     }
 
     rec.onresult = (e: any) => {
-      const result = e.results?.[e.results.length - 1]
-      const transcript: string = result?.[0]?.transcript ?? ''
-      // 只在最终结果时回填，避免实时片段反复触发
-      if (result?.isFinal && transcript.trim()) onResult(transcript.trim())
+      // 还在出识别结果 = 还在说话（音量检测不可用时的兜底依据）
+      lastVoiceAt = Date.now()
+      finalText = ''
+      const results = e?.results
+      for (let i = 0; i < (results?.length ?? 0); i += 1) {
+        const r = results[i]
+        if (r?.isFinal) finalText += (r[0]?.transcript ?? '')
+      }
     }
 
     rec.onerror = (e: any) => {
       const code: string = e?.error ?? 'unknown'
       lastError.value = code
-      isListening.value = false
-      recognition = null
+      if (code === 'aborted') return // 主动 stop 触发，交给 finish 收尾
       if (code === 'no-speech') {
+        // 静音超时常被浏览器上报成 no-speech：已识别到的内容仍然有效
+        if (finalText.trim()) {
+          finish()
+          return
+        }
         ElMessage.warning('没听到声音，请靠近麦克风再说一次')
       } else if (code === 'not-allowed' || code === 'service-not-allowed') {
         ElMessage.error('麦克风权限被拒绝，请点击地址栏左侧的麦克风图标允许后重试')
@@ -214,33 +344,55 @@ export function useSpeech() {
         ElMessage.error('没有检测到麦克风设备')
       } else if (code === 'network') {
         ElMessage.error('语音识别服务连接失败（需要联网），请改用文字输入')
-      } else if (code !== 'aborted') {
+      } else {
         ElMessage.warning('语音识别出错：' + code)
       }
-      onEnd?.()
+      finish()
     }
 
     rec.onend = () => {
-      isListening.value = false
-      recognition = null
-      onEnd?.()
+      if (settled) return
+      // Chrome 偶尔会自己结束识别：只要还没静音满 3 秒就重新拉起，继续听
+      const silentEnough = Date.now() - lastVoiceAt >= SILENCE_MS
+      const tooLong = Date.now() - startedAt >= MAX_RECORD_MS
+      if (!silentEnough && !tooLong && restarts < 5) {
+        restarts += 1
+        try {
+          rec.start()
+          return
+        } catch {
+          /* 拉不起来就正常收尾 */
+        }
+      }
+      finish()
     }
 
     recognition = rec
+    finishCurrent = finish
     try {
       rec.start()
       isListening.value = true
       return true
     } catch {
+      settled = true
+      if (tick !== null) {
+        window.clearInterval(tick)
+        tick = null
+      }
       recognition = null
+      finishCurrent = null
       isListening.value = false
       ElMessage.warning('无法启动语音识别，请检查麦克风权限')
       return false
     }
   }
 
-  /** 停止语音识别 */
+  /** 停止语音识别（等价于「我说完了」，已识别内容照样交出去） */
   function stop() {
+    if (finishCurrent) {
+      finishCurrent()
+      return
+    }
     if (recognition) {
       try {
         recognition.stop()
@@ -256,6 +408,7 @@ export function useSpeech() {
   function stopSpeaking() {
     const synth = window.speechSynthesis
     if (!synth) return
+    speakToken += 1 // 作废在播回调，防止 cancel() 的 onend 继续触发 onEnd
     stopResumeGuard()
     synth.cancel()
     isSpeaking.value = false
@@ -276,10 +429,12 @@ export function useSpeech() {
 
     unlockAudio()
     try {
+      speakToken += 1 // 新一轮朗读作废上一轮的回调
       stopResumeGuard()
       synth.cancel()
       // 关键：cancel() 后必须让出一次事件循环，否则紧随的 speak 会被 Chrome 丢弃
       await new Promise((resolve) => setTimeout(resolve, 80))
+      const token = speakToken
 
       const voices = await loadVoices()
       const voice = pickVoice(content, voices)
@@ -295,11 +450,13 @@ export function useSpeech() {
         isSpeaking.value = true
       }
       utter.onend = () => {
+        if (token !== speakToken) return // 已被 stopSpeaking / 新朗读取代
         isSpeaking.value = false
         stopResumeGuard()
         opts?.onEnd?.()
       }
       utter.onerror = (e: any) => {
+        if (token !== speakToken) return
         const code: string = e?.error ?? 'unknown'
         isSpeaking.value = false
         stopResumeGuard()

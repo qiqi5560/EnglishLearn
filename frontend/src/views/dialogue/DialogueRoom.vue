@@ -67,15 +67,17 @@
             </div>
 
             <div ref="chatPanel" class="chat-panel">
-              <ChatBubble
-                v-for="msg in sessionStore.messages"
-                :key="msg.id"
-                :speaker="msg.speaker"
-                :content-en="msg.contentEn"
-                :content-zh="msg.contentZh || undefined"
-                :time="displayTime(msg.time)"
-                @play="onPlay(msg)"
-              />
+              <template v-for="msg in sessionStore.messages" :key="msg.id">
+                <ChatNotice v-if="msg.speaker === 'system'" :text="msg.contentEn" :time="displayTime(msg.time)" />
+                <ChatBubble
+                  v-else
+                  :speaker="msg.speaker === 'ai' ? 'ai' : 'user'"
+                  :content-en="msg.contentEn"
+                  :content-zh="msg.contentZh || undefined"
+                  :time="displayTime(msg.time)"
+                  @play="onPlay(msg)"
+                />
+              </template>
               <div v-if="sessionStore.sending" class="typing text-muted">AI 正在回复…</div>
               <el-empty v-if="!loading && !sessionStore.sending && !sessionStore.messages.length" description="还没有对话消息" />
             </div>
@@ -126,6 +128,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AppHeader from '@/components/base/AppHeader.vue'
 import DigitalHuman from '@/components/business/DigitalHuman.vue'
 import ChatBubble from '@/components/business/ChatBubble.vue'
+import ChatNotice from '@/components/business/ChatNotice.vue'
 import AudioWave from '@/components/business/AudioWave.vue'
 import ScoreRing from '@/components/base/ScoreRing.vue'
 import { useSessionStore } from '@/stores/session'
@@ -176,7 +179,12 @@ async function onSend() {
   if (sessionStore.sending || sessionStore.status === 'finished') return
   draft.value = ''
   try {
-    await sessionStore.send(text)
+    const outcome = await sessionStore.send(text)
+    if (outcome.blocked) {
+      // 被撤回：把原文回填输入框，方便改成礼貌说法后重发
+      draft.value = text
+      ElMessage.warning(outcome.reason || '消息含不当用语，已被撤回')
+    }
   } catch {
     draft.value = text
   }

@@ -22,6 +22,11 @@ public class MeteredLlmProvider implements LlmProvider {
         return delegate.name();
     }
 
+    /** 暴露被装饰的实现，供启动预热等基础设施使用 */
+    public LlmProvider delegate() {
+        return delegate;
+    }
+
     @Override
     public String name() {
         return delegate.name();

@@ -2,7 +2,7 @@
 """
 test_llm.py —— 大模型(LLM)单模块测试
 
-作用：验证"千问 qwen2.5:7b-instruct"本地模型能否正常对话。
+作用：验证"千问 qwen2.5:1.5b-instruct"本地模型能否正常对话。
 运行: python test_llm.py
 成功标志: 终端能看到 AI 的英文自我介绍/回复。
 """
@@ -16,7 +16,7 @@ from llm import OllamaClient  # noqa: E402
 
 def main():
     print("=" * 50)
-    print("  LLM 大模型对话测试（qwen2.5:7b-instruct 本地运行）")
+    print("  LLM 大模型对话测试（qwen2.5:1.5b-instruct 本地运行）")
     print("=" * 50)
     print("正在连接本机 Ollama 服务...")
 

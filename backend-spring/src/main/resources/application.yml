@@ -2,6 +2,10 @@ server:
   port: 8080
   servlet:
     context-path: /api
+    multipart:
+      # 跟读录音：60 秒 16kHz/16bit WAV 约 1.9MB，留足余量
+      max-file-size: 20MB
+      max-request-size: 20MB
 
 spring:
   application:
@@ -30,12 +34,28 @@ app:
     secret: dev-secret-change-me-in-production
     expire-minutes: 10080
   cors-origins: http://localhost:5173,http://127.0.0.1:5173
+  # 上传文件（头像等）存放目录，相对后端工作目录；通过 /api/files/** 对外访问
+  upload-dir: ./uploads
   sms:
     mock-code: "123456"
+  # 内容安全审核：用户消息入库前拦截不当用语（命中即撤回，不入库、不进大模型）
+  moderation:
+    enabled: true
+    show-ai-notice: true   # 撤回后是否由 AI 说一句礼貌提醒
 
 # LLM 提供方：mock | ollama
 llm:
   provider: ollama
   ollama:
-    base-url: http://172.20.6.147:11434
-    model: qwen2.5:7b-instruct
+    base-url: http://127.0.0.1:11434
+    model: qwen2.5:1.5b-instruct
+
+# 音素级发音评测（本地 ONNX，wav2vec2 + cmudict）
+# 关掉后跟读自动回退为「文本比对评分」，不影响其它功能
+pron:
+  enabled: true
+  # 首次评测时才加载模型（约 300MB），避免拖慢启动
+  lazy-load: true
+  model-path: D:/英语练习/AI/models/pronunciation/model_quantized.onnx
+  vocab-path: D:/英语练习/AI/models/pronunciation/vocab.json
+  dict-path: D:/英语练习/AI/models/pronunciation/cmudict.dict

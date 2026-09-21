@@ -86,7 +86,7 @@ public class AdminInsightService {
                                AuditLogService auditLog,
                                @Value("${llm.provider:mock}") String llmProviderName,
                                @Value("${llm.ollama.base-url:http://localhost:11434}") String ollamaBaseUrl,
-                               @Value("${llm.ollama.model:qwen2.5:7b-instruct}") String ollamaModel) {
+                               @Value("${llm.ollama.model:qwen2.5:1.5b-instruct}") String ollamaModel) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
         this.studyRecordRepository = studyRecordRepository;

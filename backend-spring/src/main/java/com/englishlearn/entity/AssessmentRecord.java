@@ -23,6 +23,10 @@ public class AssessmentRecord {
     @Column(name = "assess_id")
     public Integer assessId;
 
+    /** 归属用户。对话评测经 session 关联，名句跟读等无会话场景直接记录；旧数据可能为空 */
+    @Column(name = "user_id")
+    public Integer userId;
+
     @Column(name = "session_id")
     public Integer sessionId;
 

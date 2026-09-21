@@ -8,17 +8,24 @@ import com.englishlearn.dto.QuoteDtos.DocDto;
 import com.englishlearn.dto.QuoteDtos.ParagraphDto;
 import com.englishlearn.dto.QuoteDtos.QuoteDto;
 import com.englishlearn.dto.QuoteDtos.ReadEvalDto;
+import com.englishlearn.entity.AssessmentRecord;
 import com.englishlearn.entity.QuoteMaterial;
 import com.englishlearn.entity.ReadingDoc;
+import com.englishlearn.entity.StudyRecord;
 import com.englishlearn.entity.User;
 import com.englishlearn.llm.EvalResult;
 import com.englishlearn.llm.LlmProvider;
+import com.englishlearn.pron.PronResult;
+import com.englishlearn.pron.PronunciationService;
+import com.englishlearn.repository.AssessmentRecordRepository;
 import com.englishlearn.repository.QuoteMaterialRepository;
 import com.englishlearn.repository.ReadingDocRepository;
+import com.englishlearn.repository.StudyRecordRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,13 +40,22 @@ public class QuoteService {
     private final QuoteMaterialRepository quoteRepository;
     private final ReadingDocRepository docRepository;
     private final LlmProvider llmProvider;
+    private final StudyRecordRepository studyRecordRepository;
+    private final AssessmentRecordRepository assessmentRepository;
+    private final PronunciationService pronunciationService;
 
     public QuoteService(QuoteMaterialRepository quoteRepository,
                         ReadingDocRepository docRepository,
-                        LlmProvider llmProvider) {
+                        LlmProvider llmProvider,
+                        StudyRecordRepository studyRecordRepository,
+                        AssessmentRecordRepository assessmentRepository,
+                        PronunciationService pronunciationService) {
         this.quoteRepository = quoteRepository;
         this.docRepository = docRepository;
         this.llmProvider = llmProvider;
+        this.studyRecordRepository = studyRecordRepository;
+        this.assessmentRepository = assessmentRepository;
+        this.pronunciationService = pronunciationService;
     }
 
     // ------------------------------------------------------------
@@ -186,8 +202,160 @@ public class QuoteService {
         if (updated(eval.pron, eval.fluency, eval.natural, eval.reaction)) {
             tips.add("保持这个状态每天来一段，语感会越来越顺。");
         }
+
+        // 落库进学习报表：study_record 驱动统计卡与成长曲线，assessment_record 驱动能力雷达图
+        LocalDateTime now = LocalDateTime.now();
+        AssessmentRecord assessment = new AssessmentRecord();
+        assessment.userId = user.userId;
+        assessment.pronScore = eval.pron;
+        assessment.fluencyScore = eval.fluency;
+        assessment.reactionScore = eval.reaction;
+        assessment.naturalScore = eval.natural;
+        assessment.grammarFeedback = feedback;
+        assessment.assessTime = now;
+        assessmentRepository.save(assessment);
+
+        StudyRecord studyRecord = new StudyRecord();
+        studyRecord.userId = user.userId;
+        studyRecord.actionType = "reading";
+        studyRecord.durationMin = 1;
+        studyRecord.score = total;
+        studyRecord.learnDate = now.toLocalDate();
+        studyRecordRepository.save(studyRecord);
+
         return new ReadEvalDto(total, eval.pron, eval.fluency, eval.natural, eval.reaction,
-                accuracy, missing, feedback, tips);
+                accuracy, missing, feedback, tips, null);
+    }
+
+    /**
+     * 音素级跟读评测：用户上传录音时走本地 ONNX 音素模型，
+     * 逐音素判定读对 / 读错 / 漏读，给出音标级纠错。
+     */
+    @Transactional
+    public ReadEvalDto evaluateReadingAudio(User user, String target, byte[] audio) {
+        if (target == null || target.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "缺少参照文本");
+        }
+        if (audio == null || audio.length == 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "没有收到录音");
+        }
+        PronResult result = pronunciationService.assess(audio, target);
+        if (!result.message().isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, result.message());
+        }
+
+        double pron = result.accuracy();
+        double fluency = result.fluency();
+        double completion = result.completeness();
+        double natural = result.overall();
+        double total = Math.round((pron * 0.35 + fluency * 0.25 + natural * 0.25 + completion * 0.15) * 10.0) / 10.0;
+
+        List<String> missing = weakWords(result);
+        String feedback = phonemeFeedback(result);
+        List<String> tips = phonemeTips(result);
+
+        saveReadingRecord(user, pron, fluency, completion, natural, total, feedback);
+
+        return new ReadEvalDto(total, pron, fluency, natural, completion,
+                (int) Math.round(completion), missing, feedback, tips, toPhonemeDto(result));
+    }
+
+    /** 音素评分落库，与文本评分共用同一套学习报表数据 */
+    private void saveReadingRecord(User user, double pron, double fluency, double reaction,
+                                   double natural, double total, String feedback) {
+        LocalDateTime now = LocalDateTime.now();
+        AssessmentRecord assessment = new AssessmentRecord();
+        assessment.userId = user.userId;
+        assessment.pronScore = pron;
+        assessment.fluencyScore = fluency;
+        assessment.reactionScore = reaction;
+        assessment.naturalScore = natural;
+        assessment.grammarFeedback = feedback;
+        assessment.assessTime = now;
+        assessmentRepository.save(assessment);
+
+        StudyRecord studyRecord = new StudyRecord();
+        studyRecord.userId = user.userId;
+        studyRecord.actionType = "reading";
+        studyRecord.durationMin = 1;
+        studyRecord.score = total;
+        studyRecord.learnDate = now.toLocalDate();
+        studyRecordRepository.save(studyRecord);
+    }
+
+    private static List<String> weakWords(PronResult result) {
+        List<String> weak = new ArrayList<>();
+        for (PronResult.WordScore w : result.words()) {
+            if (w.score() < 60) {
+                weak.add(w.word());
+            }
+        }
+        return weak.size() > 5 ? weak.subList(0, 5) : weak;
+    }
+
+    /** 用音素错误拼一句中文反馈，直接告诉用户哪个音没读对 */
+    private static String phonemeFeedback(PronResult result) {
+        if (result.issues().isEmpty()) {
+            return "音素级检测通过，每个音都读得很到位！";
+        }
+        StringBuilder sb = new StringBuilder("有 " + result.issues().size() + " 处发音可以更准：");
+        int shown = 0;
+        for (PronResult.PronIssue issue : result.issues()) {
+            if (shown >= 3) {
+                break;
+            }
+            String tail = issue.hint().isEmpty() ? "" : "（" + issue.hint() + "）";
+            if ("del".equals(issue.type())) {
+                sb.append(' ').append(issue.word()).append(" 的 /").append(issue.expected()).append("/ 没读出来").append(tail);
+            } else if ("sub".equals(issue.type())) {
+                sb.append(' ').append(issue.word()).append(" 的 /").append(issue.expected())
+                        .append("/ 读成了 /").append(issue.got()).append('/').append(tail);
+            } else {
+                sb.append(" 多读了一个 /").append(issue.got()).append('/');
+            }
+            sb.append('；');
+            shown++;
+        }
+        sb.setLength(sb.length() - 1);
+        return sb.toString();
+    }
+
+    private static List<String> phonemeTips(PronResult result) {
+        List<String> tips = new ArrayList<>();
+        if (result.accuracy() >= 85) {
+            tips.add("音素准确度很高，试着带上原句的情感重音再读一遍。");
+        } else {
+            tips.add("重点练习标红的词，跟着音标把每个音读饱满，再整句跟读。");
+        }
+        if (result.speed() > 16) {
+            tips.add("语速偏快（" + result.speed() + " 音素/秒），慢一点让每个音发完整。");
+        } else if (result.speed() < 8) {
+            tips.add("语速偏慢，可以把词连起来读，会更接近母语节奏。");
+        }
+        if (result.completeness() < 80) {
+            tips.add("有音素没读出来，先保证每个词读完整，再追求流畅。");
+        }
+        if (!result.skipped().isEmpty()) {
+            tips.add("未参与音素评测的词：" + String.join("、", result.skipped().subList(0, Math.min(3, result.skipped().size()))));
+        }
+        return tips;
+    }
+
+    private static QuoteDtos.PhonemeEvalDto toPhonemeDto(PronResult result) {
+        List<QuoteDtos.WordPronDto> words = new ArrayList<>();
+        for (PronResult.WordScore w : result.words()) {
+            List<QuoteDtos.PronPhonemeDto> items = new ArrayList<>();
+            for (PronResult.PhonemeItem item : w.phonemes()) {
+                items.add(new QuoteDtos.PronPhonemeDto(item.ph(), item.status(), item.hint()));
+            }
+            words.add(new QuoteDtos.WordPronDto(w.word(), w.score(), items));
+        }
+        List<QuoteDtos.PronIssueDto> issues = new ArrayList<>();
+        for (PronResult.PronIssue issue : result.issues()) {
+            issues.add(new QuoteDtos.PronIssueDto(issue.type(), issue.expected(), issue.got(), issue.word(), issue.hint()));
+        }
+        return new QuoteDtos.PhonemeEvalDto(result.accuracy(), result.completeness(), result.fluency(),
+                result.speed(), result.duration(), words, issues, result.skipped(), result.message());
     }
 
     private boolean updated(double a, double b, double c, double d) {

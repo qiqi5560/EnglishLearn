@@ -57,7 +57,31 @@ public final class QuoteDtos {
                               int accuracy,
                               List<String> missingWords,
                               String feedback,
-                              List<String> tips) {
+                              List<String> tips,
+                              PhonemeEvalDto phoneme) {
+    }
+
+    /** 音素级评测详情：仅在收到录音、且音素引擎可用时返回 */
+    public record PhonemeEvalDto(double accuracy,
+                                 double completeness,
+                                 double fluency,
+                                 double speed,
+                                 double duration,
+                                 List<WordPronDto> words,
+                                 List<PronIssueDto> issues,
+                                 List<String> skipped,
+                                 String message) {
+    }
+
+    /** 单词级发音：单词 + 分数 + 逐音素判定 */
+    public record WordPronDto(String word, int score, List<PronPhonemeDto> phonemes) {
+    }
+
+    public record PronPhonemeDto(String ph, String status, String hint) {
+    }
+
+    /** 一条音标级纠错 */
+    public record PronIssueDto(String type, String expected, String got, String word, String hint) {
     }
 
     public static QuoteDto quoteToDict(QuoteMaterial q) {

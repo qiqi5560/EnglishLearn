@@ -9,9 +9,41 @@
           <section class="user-card glass-card hover-lift peek-host">
             <PeekMascot class="user-mascot" :size="58" />
 
-            <el-avatar :size="76" class="user-avatar" :src="userStore.userInfo.avatarUrl || undefined">
-              {{ userStore.userInfo.nickname?.[0]?.toUpperCase() || 'U' }}
-            </el-avatar>
+            <div
+              class="avatar-wrap"
+              role="button"
+              :title="uploading ? '正在上传…' : '点击更换头像'"
+              @click="pickAvatar"
+            >
+              <el-avatar :size="76" class="user-avatar" :src="avatarSrc || undefined">
+                {{ userStore.userInfo.nickname?.[0]?.toUpperCase() || 'U' }}
+              </el-avatar>
+              <span class="avatar-camera">
+                <el-icon><Camera /></el-icon>
+              </span>
+              <span v-if="uploading" class="avatar-mask">
+                <el-icon class="is-loading"><Loading /></el-icon>
+              </span>
+            </div>
+
+            <!-- 本地选图：隐藏原生 input，由头像点击触发 -->
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              class="avatar-input"
+              @change="onFilePicked"
+            />
+
+            <button
+              v-if="avatarSrc"
+              type="button"
+              class="avatar-remove"
+              :disabled="uploading"
+              @click="removeAvatar"
+            >
+              移除头像
+            </button>
 
             <h2 class="user-nickname">{{ userStore.userInfo.nickname || '未设置昵称' }}</h2>
             <p class="user-phone text-muted">{{ maskPhone(userStore.userInfo.phone) }}</p>
@@ -108,6 +140,8 @@ import AppHeader from '@/components/base/AppHeader.vue'
 import PeekMascot from '@/components/base/PeekMascot.vue'
 import LevelTag from '@/components/business/LevelTag.vue'
 import { useUserStore } from '@/stores/user'
+import { uploadAvatar } from '@/api/modules/auth'
+import { compressImage } from '@/utils/image'
 
 const AGE_GROUPS = [
   { value: 'child', label: '儿童' },
@@ -123,6 +157,57 @@ const loading = ref(false)
 const saving = ref(false)
 const editVisible = ref(false)
 const editForm = reactive({ nickname: '', ageGroup: 'adult', bio: '' })
+
+// ---------------- 自定义头像 ----------------
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+const avatarSrc = computed(() => userStore.userInfo?.avatarUrl || '')
+
+function pickAvatar() {
+  if (uploading.value) return
+  fileInput.value?.click()
+}
+
+/** 选中本地图片：前端压缩后上传，成功后直接用返回的用户信息刷新本地缓存 */
+async function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 清空，允许连续选同一张图
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  uploading.value = true
+  try {
+    const blob = await compressImage(file)
+    const me = await uploadAvatar(
+      new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' }),
+    )
+    userStore.setUserInfo(me)
+    ElMessage.success('头像已更新')
+  } catch (err) {
+    // 网络/业务错误已由请求层统一提示，这里只补前端本地处理失败的情况
+    if (err instanceof Error && !('isAxiosError' in err)) {
+      ElMessage.error(err.message)
+    }
+  } finally {
+    uploading.value = false
+  }
+}
+
+/** 恢复默认头像（清空 avatarUrl 后显示昵称首字母） */
+async function removeAvatar() {
+  uploading.value = true
+  try {
+    await userStore.updateProfile({ avatarUrl: '' })
+    ElMessage.success('已恢复默认头像')
+  } catch {
+    /* 错误提示已由请求层统一弹出 */
+  } finally {
+    uploading.value = false
+  }
+}
 
 const ageGroupLabel = computed(() => {
   const v = userStore.userInfo?.ageGroup
@@ -230,6 +315,69 @@ $ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
 .user-card:hover .user-avatar {
   transform: scale(1.05);
+}
+
+// ---------------- 自定义头像：点击更换 ----------------
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.avatar-input {
+  display: none;
+}
+
+.avatar-camera {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: #fff;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: linear-gradient(150deg, var(--primary), var(--ink));
+  box-shadow: 0 4px 12px rgba(31, 42, 68, 0.22);
+  transition: transform 0.4s $ease-spring;
+}
+
+.avatar-wrap:hover .avatar-camera {
+  transform: scale(1.14);
+}
+
+.avatar-mask {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  color: #fff;
+  border-radius: 50%;
+  background: rgba(20, 26, 40, 0.42);
+}
+
+.avatar-remove {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.25s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--primary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
 }
 
 .user-nickname {

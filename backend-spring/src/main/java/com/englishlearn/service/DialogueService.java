@@ -51,6 +51,7 @@ public class DialogueService {
     private final AssessmentRecordRepository assessmentRepository;
     private final StudyRecordRepository studyRecordRepository;
     private final LlmProvider llmProvider;
+    private final ContentModerationService moderationService;
 
     /** 模型调用线程池：口译评分在后台异步执行，不阻塞 AI 回复返回 */
     private final ExecutorService llmExecutor = Executors.newFixedThreadPool(4, r -> {
@@ -66,12 +67,14 @@ public class DialogueService {
                            ConversationMessageRepository messageRepository,
                            AssessmentRecordRepository assessmentRepository,
                            StudyRecordRepository studyRecordRepository,
-                           LlmProvider llmProvider) {
+                           LlmProvider llmProvider,
+                           ContentModerationService moderationService) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.assessmentRepository = assessmentRepository;
         this.studyRecordRepository = studyRecordRepository;
         this.llmProvider = llmProvider;
+        this.moderationService = moderationService;
     }
 
     @Transactional
@@ -107,6 +110,13 @@ public class DialogueService {
         }
         Scene scene = session.scene;
 
+        // 内容安全审核：命中不当用语时消息不入库、不进大模型，等价于「撤回」
+        ContentModerationService.Decision decision = moderationService.inspect(content);
+        if (decision.blocked()) {
+            return SendResult.blocked(decision.reason(), decision.tip(),
+                    decision.noticeEn(), decision.noticeZh());
+        }
+
         ConversationMessage userMsg = new ConversationMessage();
         userMsg.sessionId = session.sessionId;
         userMsg.speaker = "user";
@@ -135,8 +145,7 @@ public class DialogueService {
 
         startAsyncEvaluation(session.sessionId, userMsg.messageId, content);
 
-        SendResult sendResult = new SendResult(userMsg, aiMsg, null);
-        return sendResult;
+        return SendResult.of(userMsg, aiMsg, null);
     }
 
     /**
@@ -295,5 +304,27 @@ public class DialogueService {
         return Math.round(v * 10.0) / 10.0;
     }
 
-    public record SendResult(ConversationMessage userMessage, ConversationMessage aiMessage, Map<String, Object> liveScores) {}
+    /**
+     * 发送结果。blocked=true 表示命中不当用语被撤回，此时 userMessage / aiMessage 均为 null，
+     * 前端应把已上屏的乐观气泡替换为「已撤回」提示，并可展示 noticeEn/noticeZh 的礼貌提醒。
+     */
+    public record SendResult(ConversationMessage userMessage,
+                             ConversationMessage aiMessage,
+                             Map<String, Object> liveScores,
+                             boolean blocked,
+                             String reason,
+                             String tip,
+                             String noticeEn,
+                             String noticeZh) {
+
+        public static SendResult of(ConversationMessage userMessage,
+                                    ConversationMessage aiMessage,
+                                    Map<String, Object> liveScores) {
+            return new SendResult(userMessage, aiMessage, liveScores, false, null, null, null, null);
+        }
+
+        public static SendResult blocked(String reason, String tip, String noticeEn, String noticeZh) {
+            return new SendResult(null, null, null, true, reason, tip, noticeEn, noticeZh);
+        }
+    }
 }

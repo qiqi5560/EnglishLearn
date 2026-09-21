@@ -12,6 +12,14 @@ export interface LiveScores {
 
 const EMPTY_SCORES: LiveScores = { pron: 0, fluency: 0, reaction: 0, natural: 0 }
 
+/** 发送结果：blocked=true 表示命中不当用语被撤回（消息未入库） */
+export interface SendOutcome {
+  blocked?: boolean
+  reason?: string
+  aiMessage?: ChatMessageDto
+  liveScores?: LiveScores
+}
+
 export const useSessionStore = defineStore('session', () => {
   const sessionId = ref<number | null>(null)
   const sceneId = ref<number | null>(null)
@@ -60,8 +68,8 @@ export const useSessionStore = defineStore('session', () => {
     return session
   }
 
-  /** 发送一条用户消息：返回 AI 回复与实时评分 */
-  async function send(content: string): Promise<{ aiMessage: ChatMessageDto; liveScores: LiveScores }> {
+  /** 发送一条用户消息：返回 AI 回复与实时评分；命中违规词时返回 blocked */
+  async function send(content: string): Promise<SendOutcome> {
     if (!sessionId.value) throw new Error('会话尚未创建')
     sending.value = true
 
@@ -76,17 +84,46 @@ export const useSessionStore = defineStore('session', () => {
 
     try {
       const res = await dialogueApi.sendMessage(sessionId.value, content)
+
+      // 命中不当用语：后端未入库，把已上屏的乐观气泡原地换成「已撤回」提示
+      if (res.blocked) {
+        const revoked: ChatMessageDto = {
+          id: optimisticId,
+          speaker: 'system',
+          contentEn: res.tip || '该消息含不当用语，已被撤回',
+          time: new Date().toISOString(),
+        }
+        const idx = messages.value.findIndex((m) => m.id === optimisticId)
+        if (idx >= 0) messages.value.splice(idx, 1, revoked)
+        else messages.value.push(revoked)
+
+        // AI 礼貌提醒（本地气泡，同样不入库）
+        if (res.noticeEn) {
+          messages.value.push({
+            id: -Date.now() - 1,
+            speaker: 'ai',
+            contentEn: res.noticeEn,
+            contentZh: res.noticeZh ?? '',
+            time: new Date().toISOString(),
+          })
+        }
+        return { blocked: true, reason: res.reason }
+      }
+
+      const userMessage = res.userMessage
+      const aiMessage = res.aiMessage
+      if (!userMessage || !aiMessage) throw new Error('服务端未返回消息内容')
       const idx = messages.value.findIndex((m) => m.id === optimisticId)
-      if (idx >= 0) messages.value.splice(idx, 1, res.userMessage)
-      else messages.value.push(res.userMessage)
-      messages.value.push(res.aiMessage)
+      if (idx >= 0) messages.value.splice(idx, 1, userMessage)
+      else messages.value.push(userMessage)
+      messages.value.push(aiMessage)
       if (res.liveScores) {
         liveScores.value = { ...res.liveScores } as LiveScores
       } else {
         // 评分后台计算中：不阻塞本次返回，异步轮询回填
-        void pollAssessment(res.userMessage.id)
+        void pollAssessment(userMessage.id)
       }
-      return { aiMessage: res.aiMessage, liveScores: liveScores.value }
+      return { aiMessage, liveScores: liveScores.value }
     } catch (e) {
       // 失败时撤下乐观消息，输入内容由调用方恢复
       const idx = messages.value.findIndex((m) => m.id === optimisticId)

@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * Ollama Provider：调用 qwen2.5:7b-instruct 完成场景对话（reply）与口语评估（evaluate）。
+ * Ollama Provider：调用 qwen2.5:1.5b-instruct 完成场景对话（reply）与口语评估（evaluate）。
  * 评估强制要求模型输出 JSON。当 Ollama 不可用或返回异常时回退到 Mock 规则实现，
  * 保证演示流程不中断。
  */
@@ -235,40 +235,26 @@ public class OllamaLlmProvider implements LlmProvider {
         return out;
     }
 
+    /**
+     * 跟读评测完全走 {@link ReadingScorer} 本地计算，不再调用大模型：
+     * - 快：省掉一次生成，1.6 秒（冷启动 11 秒）降到毫秒级；
+     * - 准：1.5B 模型打分忽高忽低（同一段朗读 97 分与 10 分并存）、点评常跑题成原句翻译；
+     * - 稳：按词对齐算读对词数，结果可复现。
+     * 大模型仍负责场景对话、翻译等真正需要生成的场景。
+     */
     @Override
     public EvalResult evaluateReading(String target, String spoken) {
-        String prompt = "You are an English reading-tutor. Compare the learner's spoken reading against the reference text.\n"
-                + "Score pronunciation (pron), fluency and naturalness (natural) on a 0-100 scale, and completion (reaction) as how fully the learner read the reference.\n"
-                + "Provide a friendly grammarFeedback and a list of phonemeIssues (word/phoneme/note).\n\n"
-                + "Reference: " + target + "\n\n"
-                + "Learner spoke: " + spoken + "\n"
-                + "Respond ONLY with JSON: {\"pron\":0,\"fluency\":0,\"reaction\":0,\"natural\":0,"
-                + "\"grammarFeedback\":\"\",\"phonemeIssues\":[{\"word\":\"\",\"phoneme\":\"\",\"note\":\"\"}]}";
-        String content = chat(prompt, true, 300);
-        if (content != null) {
-            JsonNode node = parseJson(content);
-            if (node != null) {
-                EvalResult r = new EvalResult();
-                r.pron = node.path("pron").asDouble();
-                r.fluency = node.path("fluency").asDouble();
-                r.reaction = node.path("reaction").asDouble();
-                r.natural = node.path("natural").asDouble();
-                r.grammarFeedback = node.path("grammarFeedback").asText(null);
-                r.phonemeIssues = new ArrayList<>();
-                JsonNode issues = node.path("phonemeIssues");
-                if (issues.isArray()) {
-                    for (JsonNode it : issues) {
-                        Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("word", it.path("word").asText(""));
-                        item.put("phoneme", it.path("phoneme").asText(""));
-                        item.put("note", it.path("note").asText(""));
-                        r.phonemeIssues.add(item);
-                    }
-                }
-                return r;
-            }
+        return ReadingScorer.score(target, spoken);
+    }
+
+    /** 启动预热：把模型载入内存并常驻，避免首次评测等十几秒的加载时间 */
+    public void warmup() {
+        try {
+            doChat("Reply with OK", false, 4);
+            log.info("Ollama 模型预热完成：{}", model);
+        } catch (Exception e) {
+            log.warn("Ollama 预热失败（不影响启动，首次调用时再加载）：{}", e.getMessage());
         }
-        return fallback.evaluateReading(target, spoken);
     }
 
     private static final int MAX_ATTEMPTS = 3;
@@ -341,8 +327,9 @@ public class OllamaLlmProvider implements LlmProvider {
         options.put("num_predict", numPredict);
         options.put("temperature", 0.7);
         body.put("options", options);
-        // 模型常驻内存，避免每句话都重新加载 4.7GB 权重
-        body.put("keep_alive", "30m");
+        // 模型常驻内存（-1 表示永不卸载）：否则空闲后首次评测要等约 11 秒重新加载权重。
+        // 注意必须是数字而非字符串 "-1"，Ollama 只能解析 "-1m" 这类带单位的时长串。
+        body.put("keep_alive", -1);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);

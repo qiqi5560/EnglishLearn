@@ -46,6 +46,13 @@ export function updateProfile(payload: UpdateProfilePayload) {
   return http.put<UserDto>('/users/me', payload)
 }
 
+/** 上传自定义头像：成功返回最新用户信息，直接覆盖本地缓存即可 */
+export function uploadAvatar(file: Blob) {
+  const form = new FormData()
+  form.append('file', file, 'avatar.jpg')
+  return http.post<UserDto>('/users/me/avatar', form, { timeout: 30000 })
+}
+
 export function updatePassword(payload: { oldPassword: string; newPassword: string }) {
   return http.put<null>('/users/me/password', payload)
 }

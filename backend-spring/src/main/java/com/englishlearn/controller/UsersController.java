@@ -12,6 +12,7 @@ import com.englishlearn.repository.UserPartnerRepository;
 import com.englishlearn.repository.UserRepository;
 import com.englishlearn.security.AuthFacade;
 import com.englishlearn.service.AuthService;
+import com.englishlearn.service.FileStorageService;
 import com.englishlearn.service.PlanService;
 import com.englishlearn.service.SocialProfileService;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
@@ -42,19 +45,35 @@ public class UsersController {
     private final UserRepository userRepository;
     private final UserPartnerRepository partnerRepository;
     private final SocialProfileService socialProfileService;
+    private final FileStorageService fileStorageService;
 
     public UsersController(AuthFacade authFacade,
                            AuthService authService,
                            PlanService planService,
                            UserRepository userRepository,
                            UserPartnerRepository partnerRepository,
-                           SocialProfileService socialProfileService) {
+                           SocialProfileService socialProfileService,
+                           FileStorageService fileStorageService) {
         this.authFacade = authFacade;
         this.authService = authService;
         this.planService = planService;
         this.userRepository = userRepository;
         this.partnerRepository = partnerRepository;
         this.socialProfileService = socialProfileService;
+        this.fileStorageService = fileStorageService;
+    }
+
+    /** 上传自定义头像：保存图片并写回 users.avatar_url */
+    @PostMapping("/me/avatar")
+    @Transactional
+    public ApiResponse uploadAvatar(@RequestParam("file") MultipartFile file) {
+        User user = authFacade.requireUser();
+        String url = fileStorageService.saveAvatar(user.userId, file);
+        String old = user.avatarUrl;
+        user.avatarUrl = url;
+        userRepository.save(user);
+        fileStorageService.deleteIfOwned(old);
+        return ApiResponse.ok(userPayload(user), "头像已更新");
     }
 
     @GetMapping("/me")
@@ -74,7 +93,12 @@ public class UsersController {
             user.nickname = body.nickname().strip();
         }
         if (body.avatarUrl() != null) {
+            String old = user.avatarUrl;
             user.avatarUrl = body.avatarUrl();
+            // 传空串表示恢复默认头像，顺手清掉旧图片文件
+            if (body.avatarUrl().isBlank()) {
+                fileStorageService.deleteIfOwned(old);
+            }
         }
         if (body.bio() != null) {
             user.bio = body.bio().length() > 100 ? body.bio().substring(0, 100) : body.bio();

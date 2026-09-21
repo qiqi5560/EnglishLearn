@@ -76,7 +76,8 @@ export interface ResourceDto {
 /** conversation_message（SRS 表 4） */
 export interface ChatMessageDto {
   id: number
-  speaker: 'user' | 'ai'
+  /** system 为本地生成的提示（如「消息已撤回」），不会入库 */
+  speaker: 'user' | 'ai' | 'system'
   contentEn: string
   contentZh?: string | null
   audioUrl?: string | null
@@ -107,10 +108,17 @@ export interface SessionListItem {
   endTime?: string | null
 }
 
-/** 对话消息返回（用户消息 + AI 回复 + 实时四维） */
+/** 对话消息返回（用户消息 + AI 回复 + 实时四维）；命中违规词时返回 blocked 一组字段 */
 export interface MessageReplyResult {
-  userMessage: ChatMessageDto
-  aiMessage: ChatMessageDto
+  /** 命中不当用语被撤回：此时不含 userMessage / aiMessage */
+  blocked?: boolean
+  reason?: string
+  tip?: string
+  /** 撤回后 AI 的礼貌提醒（中英双语），未开启时为 undefined */
+  noticeEn?: string | null
+  noticeZh?: string | null
+  userMessage?: ChatMessageDto
+  aiMessage?: ChatMessageDto
   /** 口语评分改为后台异步产出，发送时可能为 null，需用 polling 拉取 */
   liveScores: { pron: number; fluency: number; reaction: number; natural: number } | null
 }
@@ -607,6 +615,41 @@ export interface ReadEvalDto {
   missingWords: string[]
   feedback: string
   tips: string[]
+  /** 音素级详情：仅在提交了录音、且后端音素引擎可用时返回 */
+  phoneme?: PhonemeEvalDto | null
+}
+
+/** 音素级评测：逐音素判定（读对 match / 读错 sub / 漏读 del）与音标纠错 */
+export interface PhonemeEvalDto {
+  accuracy: number
+  completeness: number
+  fluency: number
+  speed: number
+  duration: number
+  words: WordPronDto[]
+  issues: PronIssueDto[]
+  skipped: string[]
+  message: string
+}
+
+export interface WordPronDto {
+  word: string
+  score: number
+  phonemes: PronPhonemeDto[]
+}
+
+export interface PronPhonemeDto {
+  ph: string
+  status: string
+  hint: string
+}
+
+export interface PronIssueDto {
+  type: string
+  expected: string
+  got: string
+  word: string
+  hint: string
 }
 
 /* ==================== 社交：站内信 / 通知 / 关注 / 分享 ==================== */
