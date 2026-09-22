@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -293,31 +294,53 @@ public class QuoteService {
         return weak.size() > 5 ? weak.subList(0, 5) : weak;
     }
 
-    /** 用音素错误拼一句中文反馈，直接告诉用户哪个音没读对 */
+    /**
+     * 用音素错误拼一句简短的中文反馈：按词聚合后只点名问题最集中的前 3 个词，
+     * 完整明细交给前端「音素级检测」的词卡展开查看，避免一长串文字刷屏。
+     */
     private static String phonemeFeedback(PronResult result) {
         if (result.issues().isEmpty()) {
             return "音素级检测通过，每个音都读得很到位！";
         }
-        StringBuilder sb = new StringBuilder("有 " + result.issues().size() + " 处发音可以更准：");
-        int shown = 0;
+        // 保持出现顺序，把同一单词的多个问题聚合到一起
+        Map<String, List<PronResult.PronIssue>> byWord = new LinkedHashMap<>();
         for (PronResult.PronIssue issue : result.issues()) {
+            byWord.computeIfAbsent(issue.word(), k -> new ArrayList<>()).add(issue);
+        }
+        boolean more = byWord.size() > 3;
+        StringBuilder sb = new StringBuilder("有 " + result.issues().size()
+                + " 处发音可以更准，涉及 " + byWord.size() + " 个词");
+        sb.append(more ? "，问题较集中的是 " : "：");
+        int shown = 0;
+        for (Map.Entry<String, List<PronResult.PronIssue>> entry : byWord.entrySet()) {
             if (shown >= 3) {
                 break;
             }
-            String tail = issue.hint().isEmpty() ? "" : "（" + issue.hint() + "）";
-            if ("del".equals(issue.type())) {
-                sb.append(' ').append(issue.word()).append(" 的 /").append(issue.expected()).append("/ 没读出来").append(tail);
-            } else if ("sub".equals(issue.type())) {
-                sb.append(' ').append(issue.word()).append(" 的 /").append(issue.expected())
-                        .append("/ 读成了 /").append(issue.got()).append('/').append(tail);
-            } else {
-                sb.append(" 多读了一个 /").append(issue.got()).append('/');
+            List<PronResult.PronIssue> list = entry.getValue();
+            sb.append(' ').append(entry.getKey().isEmpty() ? "整句" : entry.getKey())
+                    .append(' ').append(issueBrief(list.get(0)));
+            if (list.size() > 1) {
+                sb.append(" 等 ").append(list.size()).append(" 处");
             }
             sb.append('；');
             shown++;
         }
         sb.setLength(sb.length() - 1);
+        if (more) {
+            sb.append("……其余词可在下方「音素级检测」点开词卡查看音标明细");
+        }
         return sb.toString();
+    }
+
+    /** 单条音素问题的一句话描述：漏读给出音标，读错给出「读成了什么」，多读单独描述 */
+    private static String issueBrief(PronResult.PronIssue issue) {
+        if ("del".equals(issue.type())) {
+            return "/" + issue.expected() + "/ 没读出来";
+        }
+        if ("sub".equals(issue.type())) {
+            return "/" + issue.expected() + "/ 读成了 /" + issue.got() + "/";
+        }
+        return "多读了 /" + issue.got() + "/";
     }
 
     private static List<String> phonemeTips(PronResult result) {

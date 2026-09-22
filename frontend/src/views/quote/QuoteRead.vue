@@ -912,6 +912,13 @@ function finishReading() {
   finishedCount.value += 1
   const praise = ['读得真好，语感在长出来', '这一遍比上一遍更自然了', '坚持读下去，开口会越来越轻松']
   ElMessage.success(praise[Math.floor(Math.random() * praise.length)])
+  // 回到页面顶部，方便直接看打分与音素级检测结果
+  const main = document.querySelector('.app-main')
+  if (main) {
+    main.scrollTo({ top: 0, behavior: 'smooth' })
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 }
 
 // ==================== 添加名句 / 粘贴导入 ====================

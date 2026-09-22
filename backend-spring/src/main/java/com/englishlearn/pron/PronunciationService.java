@@ -42,6 +42,9 @@ public class PronunciationService {
             Map.entry("UW", "u"), Map.entry("V", "v"), Map.entry("W", "w"),
             Map.entry("Y", "j"), Map.entry("Z", "z"), Map.entry("ZH", "ʃ"));
 
+    /** 对齐时两次发音的最大时间间隔（秒）：超过视为断层，后面的「匹配」按漏读处理 */
+    private static final double MAX_SPEECH_GAP = 1.0;
+
     /** 常见音素的口语化提示：告诉用户「这个音该怎么发」 */
     private static final Map<String, String> PHONEME_HINT = Map.ofEntries(
             Map.entry("θ", "咬舌音 th（think）"), Map.entry("ð", "咬舌浊音 th（this）"),
@@ -91,10 +94,12 @@ public class PronunciationService {
             return PronResult.empty("参考句子中没有可评测的单词（不在发音词典中）", text.skipped);
         }
         float[] waveform;
+        float[] raw;
         double duration;
         try {
             WavDecoder.Pcm pcm = WavDecoder.decode(wav);
-            waveform = WavDecoder.normalize(pcm.samples());
+            raw = pcm.samples();
+            waveform = WavDecoder.normalize(raw);
             duration = pcm.duration();
         } catch (Exception e) {
             log.warn("[发音评测] 音频解析失败: {}", e.getMessage());
@@ -102,9 +107,13 @@ public class PronunciationService {
         }
 
         List<PhonemeRecognizer.PhonemeHit> hits = engine.recognizer.recognize(waveform);
+        // CTC 在静音/噪声段也会吐出随机音素，若不剪掉，对齐时会把它们「蹭」到没读的词上造成假满分
+        hits = trimSilence(raw, hits);
         if (hits.isEmpty()) {
             return PronResult.empty("没有识别到有效语音，请靠近麦克风再读一次", text.skipped);
         }
+        // 用实际说话时长算语速，录音首尾的静音不再拖低语速分
+        duration = Math.max(hits.get(hits.size() - 1).end() - hits.get(0).start(), 0.5);
         List<String> hyp = new ArrayList<>(hits.size());
         for (PhonemeRecognizer.PhonemeHit hit : hits) {
             hyp.add(hit.phoneme());
@@ -119,23 +128,45 @@ public class PronunciationService {
         int del = 0;
         int ins = 0;
 
+        int lastRef = -1; // 最近一次对齐到的参考音素下标，用于给「多读」的音定位归属单词
+        double lastTime = -1; // 上一个真实发音音素的结束时间，用于检测时间断层
         for (Op op : ops) {
             if ("ins".equals(op.op())) {
+                PhonemeRecognizer.PhonemeHit hit = hits.get(op.hypIndex());
+                if (lastTime >= 0 && hit.start() - lastTime > MAX_SPEECH_GAP) {
+                    continue; // 断层后静音里多读的音不计入
+                }
                 ins++;
-                issues.add(new PronResult.PronIssue("ins", "-", hyp.get(op.hypIndex()), "", "多读了一个音"));
+                // 多读的音落在 lastRef 与 lastRef+1 之间，归属到最近已读的单词（句首多读归第一个词）
+                String word = wordAt(text, lastRef >= 0 ? lastRef : 0);
+                issues.add(new PronResult.PronIssue("ins", "-", hit.phoneme(), word, ""));
                 continue;
             }
             int i = op.targetIndex();
-            status[i] = op.op();
+            lastRef = i;
             String expected = text.phonemes.get(i);
             String word = wordAt(text, i);
-            if ("sub".equals(op.op())) {
-                sub++;
-                issues.add(new PronResult.PronIssue("sub", expected, hyp.get(op.hypIndex()), word,
-                        PHONEME_HINT.getOrDefault(expected, "")));
-            } else if ("del".equals(op.op())) {
+            if ("del".equals(op.op())) {
+                status[i] = "del";
                 del++;
                 issues.add(new PronResult.PronIssue("del", expected, "-", word,
+                        PHONEME_HINT.getOrDefault(expected, "")));
+                continue;
+            }
+            PhonemeRecognizer.PhonemeHit hit = hits.get(op.hypIndex());
+            if (lastTime >= 0 && hit.start() - lastTime > MAX_SPEECH_GAP) {
+                // 时间断层：从这里开始其实没读，「匹配」是静音垃圾音素蹭上的，一律按漏读处理
+                status[i] = "del";
+                del++;
+                issues.add(new PronResult.PronIssue("del", expected, "-", word,
+                        PHONEME_HINT.getOrDefault(expected, "")));
+                continue;
+            }
+            lastTime = hit.end();
+            status[i] = op.op();
+            if ("sub".equals(op.op())) {
+                sub++;
+                issues.add(new PronResult.PronIssue("sub", expected, hit.phoneme(), word,
                         PHONEME_HINT.getOrDefault(expected, "")));
             } else {
                 match++;
@@ -220,6 +251,59 @@ public class PronunciationService {
             }
         }
         return "";
+    }
+
+    /**
+     * 基于能量的简易端点检测（VAD）：把静音/噪声段里识别出的垃圾音素剪掉。
+     *
+     * <p>CTC 模型在无声段也会输出随机音素，若不处理，全局对齐会把它们匹配到
+     * 没读的词上，造成「没读也是满分」的假象。做法：25ms 帧算 RMS，
+     * 以峰值能量的 12% 为语音门限，命中帧前后各保留 120ms 缓冲，
+     * 中点不在语音帧内的音素直接丢弃。
+     */
+    private static List<PhonemeRecognizer.PhonemeHit> trimSilence(float[] raw,
+            List<PhonemeRecognizer.PhonemeHit> hits) {
+        if (hits.isEmpty() || raw == null || raw.length == 0) {
+            return hits;
+        }
+        int rate = WavDecoder.TARGET_RATE;
+        int frameLen = (int) (0.025 * rate);
+        int hop = (int) (0.010 * rate);
+        int frames = Math.max(1, (raw.length - frameLen) / hop + 1);
+        double[] rms = new double[frames];
+        for (int f = 0; f < frames; f++) {
+            int off = f * hop;
+            double sum = 0;
+            for (int k = 0; k < frameLen && off + k < raw.length; k++) {
+                sum += raw[off + k] * raw[off + k];
+            }
+            rms[f] = Math.sqrt(sum / frameLen);
+        }
+        double peak = 0;
+        for (double v : rms) {
+            peak = Math.max(peak, v);
+        }
+        if (peak < 1e-4) {
+            return List.of();
+        }
+        double threshold = Math.max(peak * 0.12, 1e-3);
+        boolean[] speech = new boolean[frames];
+        int pad = 12; // 120ms 缓冲，避免剪掉词首尾的弱音
+        for (int f = 0; f < frames; f++) {
+            if (rms[f] >= threshold) {
+                for (int k = Math.max(0, f - pad); k <= Math.min(frames - 1, f + pad); k++) {
+                    speech[k] = true;
+                }
+            }
+        }
+        List<PhonemeRecognizer.PhonemeHit> kept = new ArrayList<>(hits.size());
+        for (PhonemeRecognizer.PhonemeHit hit : hits) {
+            int f = (int) ((hit.start() + hit.end()) / 2 / 0.010);
+            if (f >= 0 && f < frames && speech[f]) {
+                kept.add(hit);
+            }
+        }
+        return kept;
     }
 
     private static double clamp(double v) {
